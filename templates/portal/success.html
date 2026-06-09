@@ -1,0 +1,31 @@
+{% extends 'portal/base.html' %}
+
+{% block title %}KYC Verified Successfully{% endblock %}
+
+{% block header %}
+<div class="success-icon" style="font-size: 55px; color: var(--success); margin-bottom: 20px; animation: pulse 2s infinite;">
+    ✓
+</div>
+<h1 class="gradient-text">{{ cms_page.title }}</h1>
+<p>Your MIN KYC verification was completed. Your student card is ready to be finalized!</p>
+{% endblock %}
+
+{% block content %}
+<!-- Renders CMSPage Dynamic Content -->
+<div class="cms-content" style="text-align: left; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--card-border); border-radius: 16px; padding: 24px; margin-bottom: 30px;">
+    {{ cms_page.content|safe }}
+</div>
+
+<div class="app-links" style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;">
+    <a href="https://play.google.com/store/apps/details?id=com.transpay.transcorp_app&hl=en_IN" class="btn" style="background: linear-gradient(135deg, hsl(142, 70%, 40%) 0%, hsl(142, 60%, 30%) 100%); box-shadow: 0 4px 15px rgba(22, 163, 74, 0.3);">
+        Download Transcorp App (Android)
+    </a>
+    <a href="https://apps.apple.com/in/app/transwallet/id6739418080" class="btn" style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); box-shadow: 0 4px 15px rgba(15, 23, 42, 0.3); border: 1px solid var(--card-border);">
+        Download Transcorp App (iOS)
+    </a>
+</div>
+
+<p style="font-size: 12px; text-align: center; color: var(--text-muted); margin-bottom: 0;">
+    Your Tracking ID is: <strong style="color: var(--text-main);">{{ student.tracking_id }}</strong>
+</p>
+{% endblock %}

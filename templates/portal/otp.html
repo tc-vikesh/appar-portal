@@ -1,0 +1,59 @@
+{% extends 'portal/base.html' %}
+
+{% block title %}Verify OTP - {{ student.full_name }}{% endblock %}
+
+{% block header %}
+<h1 class="gradient-text">Enter Verification Code</h1>
+<p>An OTP verification code has been successfully sent to your registered mobile number: <strong>+91 ******{{ student.mobile|slice:"-4:" }}</strong>.</p>
+{% endblock %}
+
+{% block content %}
+<form method="POST" action="">
+    {% csrf_token %}
+
+    {% if errors.m2p %}
+    <div class="alert-error">
+        <strong>⚠️ Verification Failed:</strong> {{ errors.m2p }}
+    </div>
+    {% endif %}
+
+    {% if errors.otp %}
+    <div class="alert-error">
+        <strong>⚠️ Required:</strong> {{ errors.otp }}
+    </div>
+    {% endif %}
+
+    <!-- Attempt indicator block -->
+    <div style="background: rgba(255, 255, 255, 0.03); border: 1px dashed rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 14px; margin-bottom: 24px; font-size: 13.5px;">
+        Remaining verification attempts: 
+        <strong style="color: {% if remaining_attempts <= 1 %}var(--error){% else %}var(--warning){% endif %}; font-size: 15px;">
+            {{ remaining_attempts }} of 3
+        </strong>
+    </div>
+
+    <div class="form-group" style="text-align: center;">
+        <label for="otp" class="form-label" style="text-align: center;">6-Digit OTP Code</label>
+        <input 
+            type="text" 
+            id="otp" 
+            name="otp" 
+            class="form-input" 
+            placeholder="000000" 
+            style="text-align: center; font-size: 26px; letter-spacing: 8px; font-weight: 700; max-width: 250px; margin: 0 auto; display: block;" 
+            autocomplete="off"
+            maxlength="6"
+            pattern="\d{6}"
+            required
+        >
+    </div>
+
+    <button type="submit" class="btn" style="margin-top: 10px;">Verify & Complete KYC</button>
+
+    <div style="margin-top: 24px;">
+        <p style="font-size: 13px; margin-bottom: 0;">
+            Didn't receive the code? 
+            <a href="{% url 'portal:landing' student.tracking_id %}" style="color: var(--accent-secondary); text-decoration: none; font-weight: 600;">Go back and regenerate</a>.
+        </p>
+    </div>
+</form>
+{% endblock %}

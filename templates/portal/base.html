@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Transcorp APAAR Portal (TAP){% endblock %}</title>
+    <!-- Premium Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            /* Sleek Harmonious HSL Tailored Color Palette */
+            --bg-dark: hsl(222, 47%, 6%);
+            --bg-radial: radial-gradient(circle at top right, hsl(263, 60%, 15%) 0%, hsl(222, 47%, 6%) 60%);
+            --card-glass: rgba(13, 20, 38, 0.45);
+            --card-border: rgba(255, 255, 255, 0.08);
+            
+            --accent-primary: hsl(263, 70%, 50%);
+            --accent-primary-hover: hsl(263, 80%, 55%);
+            --accent-secondary: hsl(190, 90%, 50%);
+            
+            --text-main: hsl(210, 38%, 95%);
+            --text-muted: hsl(215, 20%, 65%);
+            --text-inverse: hsl(222, 47%, 6%);
+            
+            --success: hsl(142, 70%, 45%);
+            --error: hsl(350, 80%, 50%);
+            --warning: hsl(35, 90%, 55%);
+            
+            --transition-smooth: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-radial);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            overflow-x: hidden;
+            padding: 20px;
+        }
+
+        /* Glassmorphic Container Card */
+        .glass-card {
+            background: var(--card-glass);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--card-border);
+            border-radius: 24px;
+            width: 100%;
+            max-width: 550px;
+            padding: 40px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+            transition: var(--transition-smooth);
+            animation: fadeIn 0.8s ease-out;
+        }
+
+        .glass-card:hover {
+            border-color: rgba(255, 255, 255, 0.15);
+            box-shadow: 0 25px 60px rgba(111, 66, 193, 0.15);
+        }
+
+        h1, h2, h3, h4 {
+            font-family: 'Outfit', sans-serif;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            margin-bottom: 20px;
+        }
+
+        .gradient-text {
+            background: linear-gradient(135deg, var(--text-main) 30%, var(--accent-secondary) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p {
+            color: var(--text-muted);
+            line-height: 1.6;
+            margin-bottom: 20px;
+            font-size: 15px;
+        }
+
+        /* Forms Elements styling */
+        .form-group {
+            margin-bottom: 24px;
+            text-align: left;
+        }
+
+        .form-label {
+            display: block;
+            font-family: 'Outfit', sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-main);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .form-input {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1.5px solid var(--card-border);
+            border-radius: 12px;
+            padding: 14px 18px;
+            color: var(--text-main);
+            font-family: 'Inter', sans-serif;
+            font-size: 16px;
+            outline: none;
+            transition: var(--transition-smooth);
+        }
+
+        .form-input:focus {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 12px rgba(111, 66, 193, 0.35);
+        }
+
+        /* Checkbox styling */
+        .checkbox-container {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            cursor: pointer;
+            margin-bottom: 24px;
+            user-select: none;
+            text-align: left;
+        }
+
+        .checkbox-container input {
+            display: none;
+        }
+
+        .checkmark {
+            width: 20px;
+            height: 20px;
+            border: 1.5px solid var(--card-border);
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.05);
+            display: inline-block;
+            flex-shrink: 0;
+            position: relative;
+            transition: var(--transition-smooth);
+        }
+
+        .checkbox-container:hover .checkmark {
+            border-color: var(--accent-primary);
+        }
+
+        .checkbox-container input:checked ~ .checkmark {
+            background: var(--accent-primary);
+            border-color: var(--accent-primary);
+        }
+
+        .checkbox-container input:checked ~ .checkmark::after {
+            content: '';
+            position: absolute;
+            left: 6px;
+            top: 2px;
+            width: 5px;
+            height: 10px;
+            border: solid white;
+            border-width: 0 2px 2px 0;
+            transform: rotate(45deg);
+        }
+
+        .checkbox-text {
+            font-size: 13.5px;
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+
+        /* Buttons styling */
+        .btn {
+            display: inline-block;
+            width: 100%;
+            background: linear-gradient(135deg, var(--accent-primary) 0%, hsl(263, 60%, 40%) 100%);
+            color: white;
+            font-family: 'Outfit', sans-serif;
+            font-weight: 600;
+            font-size: 16px;
+            padding: 16px;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: var(--transition-smooth);
+            text-decoration: none;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(111, 66, 193, 0.3);
+        }
+
+        .btn:hover {
+            background: linear-gradient(135deg, var(--accent-primary-hover) 0%, var(--accent-primary) 100%);
+            box-shadow: 0 6px 20px rgba(111, 66, 193, 0.45);
+            transform: translateY(-2px);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        /* Alerts and errors states */
+        .alert-error {
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 12px;
+            padding: 14px 18px;
+            color: hsl(350, 100%, 75%);
+            font-size: 14px;
+            margin-bottom: 24px;
+            text-align: left;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: shake 0.4s ease-in-out;
+        }
+
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-6px); }
+            75% { transform: translateX(6px); }
+        }
+
+        /* Branding logo styling */
+        .brand-header {
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .brand-logo {
+            height: 48px;
+            max-width: 100%;
+            object-fit: contain;
+            margin-bottom: 16px;
+            filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.3));
+            transition: var(--transition-smooth);
+        }
+
+        .brand-logo:hover {
+            transform: scale(1.03);
+            filter: drop-shadow(0 4px 12px rgba(255, 255, 255, 0.15));
+        }
+
+        /* Extra utilities */
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 16px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 24px;
+            text-align: left;
+        }
+
+        .info-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .info-label {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+        }
+
+        .info-value {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-main);
+        }
+
+        .locked-icon {
+            font-size: 55px;
+            color: var(--error);
+            margin-bottom: 20px;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.08); }
+            100% { transform: scale(1); }
+        }
+
+        @media (max-width: 480px) {
+            .glass-card {
+                padding: 24px;
+            }
+            .info-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <div class="glass-card">
+        <div class="brand-header">
+            <img src="https://transcorpint.com/assets/images/transcorp-white-logo.png" alt="Transcorp Logo" class="brand-logo">
+            {% block header %}{% endblock %}
+        </div>
+        
+        {% block content %}{% endblock %}
+    </div>
+</body>
+</html>

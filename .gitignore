@@ -1,0 +1,29 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Secrets and Local Configurations (DO NOT COMMIT)
+.env
+.env.local
+
+# Django Media and Uploads
+media/
+static/staticfiles/
+staticfiles/
+
+# Database files (if sqlite is ever used)
+*.sqlite3
+
+# Logs and Stackdumps
+*.log
+*.stackdump
+
+# System / OS files
+.DS_Store
+Thumbs.db
+
+# VS Code / IDE settings
+.vscode/
+.idea/

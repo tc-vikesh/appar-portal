@@ -1,0 +1,195 @@
+{% extends 'portal/base.html' %}
+
+{% block title %}Verify Identity - {{ student.full_name }}{% endblock %}
+
+{% block header %}
+<h1 class="gradient-text">Verify Your Identity</h1>
+<p>Welcome, {{ student.full_name }}. To issue your Transcorp Student Card, please verify your details and enter your PAN number below.</p>
+{% endblock %}
+
+{% block content %}
+<!-- Student Details Information Grid -->
+{% if student.photo_path %}
+<div class="profile-photo-container">
+    <img src="{{ student.photo_path }}" alt="{{ student.full_name }}'s Photo" class="profile-photo">
+</div>
+{% endif %}
+
+<div class="info-grid">
+    <div class="info-section-title">Personal Information</div>
+    
+    <div class="info-item">
+        <span class="info-label">Title & Full Name</span>
+        <span class="info-value">{% if student.title %}{{ student.title }} {% endif %}{{ student.full_name }}</span>
+    </div>
+    <div class="info-item">
+        <span class="info-label">APAAR ID</span>
+        <span class="info-value">{{ student.apaar_id }}</span>
+    </div>
+    <div class="info-item">
+        <span class="info-label">Date of Birth</span>
+        <span class="info-value">{{ student.dob|date:"d M, Y" }}</span>
+    </div>
+    <div class="info-item">
+        <span class="info-label">Gender</span>
+        <span class="info-value">{{ student.gender }}</span>
+    </div>
+    <div class="info-item">
+        <span class="info-label">Mobile Number</span>
+        <span class="info-value">+91 {{ student.mobile }}</span>
+    </div>
+    <div class="info-item">
+        <span class="info-label">Email Address</span>
+        <span class="info-value">{{ student.email }}</span>
+    </div>
+    <div class="info-item" style="grid-column: span 2;">
+        <span class="info-label">Blood Group</span>
+        <span class="info-value">{{ student.blood_group|default:"-" }}</span>
+    </div>
+
+    <div class="info-section-title">Academic Records</div>
+    
+    <div class="info-item" style="grid-column: span 2;">
+        <span class="info-label">University / Institution</span>
+        <span class="info-value">{{ student.university_name }}</span>
+    </div>
+    <div class="info-item" style="grid-column: span 2;">
+        <span class="info-label">College / Campus</span>
+        <span class="info-value">{{ student.college_name }}</span>
+    </div>
+    <div class="info-item">
+        <span class="info-label">Course / Degree</span>
+        <span class="info-value">{{ student.course_name }}</span>
+    </div>
+    <div class="info-item">
+        <span class="info-label">Enrollment No.</span>
+        <span class="info-value">{{ student.enrollment_number }}</span>
+    </div>
+    <div class="info-item">
+        <span class="info-label">Admission Year</span>
+        <span class="info-value">{{ student.admission_year }}</span>
+    </div>
+    <div class="info-item">
+        <span class="info-label">Academic Session</span>
+        <span class="info-value">{{ student.academic_session }}</span>
+    </div>
+    <div class="info-item" style="grid-column: span 2;">
+        <span class="info-label">Academic Status</span>
+        <span class="info-value">{{ student.academic_status }}</span>
+    </div>
+
+    <div class="info-section-title">Address Information</div>
+    
+    <div class="info-item" style="grid-column: span 2;">
+        <span class="info-label">Current Address</span>
+        <span class="info-value address">
+            {% if student.current_address_line or student.current_address_city %}
+                {{ student.current_address_line }}<br>
+                {{ student.current_address_city }}{% if student.current_address_state %}, {{ student.current_address_state }}{% endif %}
+                {% if student.current_address_pincode %} - <strong>{{ student.current_address_pincode }}</strong>{% endif %}
+            {% else %}
+                -
+            {% endif %}
+        </span>
+    </div>
+    <div class="info-item" style="grid-column: span 2;">
+        <span class="info-label">Permanent Address</span>
+        <span class="info-value address">
+            {% if student.permanent_address_line or student.permanent_address_city %}
+                {{ student.permanent_address_line }}<br>
+                {{ student.permanent_address_city }}{% if student.permanent_address_state %}, {{ student.permanent_address_state }}{% endif %}
+                {% if student.permanent_address_pincode %} - <strong>{{ student.permanent_address_pincode }}</strong>{% endif %}
+            {% else %}
+                -
+            {% endif %}
+        </span>
+    </div>
+</div>
+
+<!-- Forms & Input fields -->
+<form method="POST" action="">
+    {% csrf_token %}
+    
+    {% if errors.m2p %}
+    <div class="alert-error">
+        <strong>⚠️ Error:</strong> {{ errors.m2p }}
+    </div>
+    {% endif %}
+
+    <div class="form-group">
+        <label for="pan_number" class="form-label">Permanent Account Number (PAN)</label>
+        <input 
+            type="text" 
+            id="pan_number" 
+            name="pan_number" 
+            class="form-input" 
+            placeholder="ABCDE1234F" 
+            value="{{ pan_number|default:'' }}" 
+            autocomplete="off"
+            maxlength="10"
+        >
+        {% if errors.pan_number %}
+        <span style="color: var(--error); font-size: 12px; margin-top: 6px; display: block; text-align: left;">
+            {{ errors.pan_number }}
+        </span>
+        {% endif %}
+    </div>
+
+    <label class="checkbox-container">
+        <input type="checkbox" name="consent" {% if consent %}checked{% endif %}>
+        <span class="checkmark"></span>
+        <span class="checkbox-text">
+            I hereby give my explicit consent to Transcorp International Ltd. to verify my PAN details with NSDL/Govt databases for the purpose of issuing my student card and completing my KYC checks.
+        </span>
+    </label>
+    {% if errors.consent %}
+    <div style="color: var(--error); font-size: 12px; margin-top: -16px; margin-bottom: 24px; text-align: left;">
+        {{ errors.consent }}
+    </div>
+    {% endif %}
+
+    <button type="submit" class="btn">Proceed to Verification</button>
+</form>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Expand max-width of the glass card on landing page for rich E2E details display */
+    .glass-card {
+        max-width: 650px !important;
+    }
+    
+    .info-section-title {
+        font-family: 'Outfit', sans-serif;
+        font-size: 13px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: var(--accent-secondary);
+        margin: 20px 0 10px 0;
+        padding-bottom: 4px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        grid-column: span 2;
+    }
+    
+    .profile-photo-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin-bottom: 24px;
+    }
+    
+    .profile-photo {
+        width: 110px;
+        height: 110px;
+        border-radius: 50%;
+        object-fit: cover;
+        border: 2px solid var(--accent-secondary);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    }
+    
+    .info-value.address {
+        line-height: 1.4;
+    }
+</style>
+{% endblock %}

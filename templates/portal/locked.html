@@ -1,0 +1,24 @@
+{% extends 'portal/base.html' %}
+
+{% block title %}Verification Locked{% endblock %}
+
+{% block header %}
+<div class="locked-icon">
+    🔒
+</div>
+<h1 class="gradient-text" style="color: var(--error);">Verification Locked</h1>
+<p>Too many invalid verification attempts. Your session has been locked for security reasons.</p>
+{% endblock %}
+
+{% block content %}
+<div style="background: rgba(239, 68, 68, 0.05); border: 1px dashed rgba(239, 68, 68, 0.25); border-radius: 16px; padding: 24px; margin-bottom: 30px; text-align: left;">
+    <p style="color: var(--text-main); font-weight: 600; margin-bottom: 8px;">Why is this locked?</p>
+    <p style="font-size: 13.5px; margin-bottom: 0;">
+        For data protection, the verification process locks after <strong>3 failed OTP attempts</strong>. To regenerate an onboarding request and unlock your card, please contact your university administrator or open your student portal.
+    </p>
+</div>
+
+<p style="font-size: 12px; text-align: center; color: var(--text-muted); margin-bottom: 0;">
+    Reference ID: <strong style="color: var(--text-main);">{{ student.tracking_id }}</strong>
+</p>
+{% endblock %}
