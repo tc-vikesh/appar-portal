@@ -24,8 +24,11 @@ admin.site.site_header = "Transcorp Apaar Portal Admin"
 admin.site.site_title = "Transcorp Apaar Portal"
 admin.site.index_title = "Welcome to Transcorp Apaar Portal Admin Dashboard"
 
+from applications.views import health_check
+
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('health/', health_check, name='health_check'),
     path('v1/issuer-bank/', include('applications.urls', namespace='issuer_bank')),
     path('v1/twa/', include('twa.urls', namespace='twa')),
     path('', include('portal.urls', namespace='portal')),

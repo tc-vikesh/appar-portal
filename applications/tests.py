@@ -377,3 +377,13 @@ class TAPTestCase(TestCase):
         self.assertEqual(student.permanent_address_city, "Patna")
         self.assertEqual(student.permanent_address_state, "Bihar")
         self.assertEqual(student.permanent_address_pincode, "800001")
+
+    def test_health_check_endpoint(self):
+        """Test that the GET /health/ health check endpoint returns 200 and indicates a healthy database."""
+        response = self.client.get(reverse('health_check'))
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertEqual(data.get("status"), "healthy")
+        self.assertEqual(data.get("database"), "connected")
+

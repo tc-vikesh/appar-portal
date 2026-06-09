@@ -458,3 +458,22 @@ class DashboardStatsView(LoggingAPIView):
             "application_status_counts": status_dict,
             "kyc_status_counts": kyc_dict
         }, status=status.HTTP_200_OK)
+
+
+from django.http import JsonResponse
+from django.db import connection
+
+def health_check(request):
+    """
+    GET /health/
+    Health check endpoint for AWS Application Load Balancer (ALB) or container services.
+    Verifies that the server is up and can reach the database.
+    """
+    try:
+        # Ping the database
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+        return JsonResponse({"status": "healthy", "database": "connected"}, status=200)
+    except Exception as e:
+        return JsonResponse({"status": "unhealthy", "database": "disconnected", "error": str(e)}, status=500)
+
