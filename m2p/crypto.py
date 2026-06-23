@@ -34,15 +34,21 @@ class M2PCryptoHelper:
 
     def _get_private_key(self):
         if self.private_key_pem:
+            pem_data = self.private_key_pem
             password = self.private_key_passphrase.encode('utf-8') if self.private_key_passphrase else None
-            return serialization.load_pem_private_key(self.private_key_pem, password=password)
-        
-        if not self.private_key_path:
-            raise ValueError("TRANSCORP_PRIVATE_KEY_PATH is not configured in settings.")
-        
-        password = self.passphrase_str.encode('utf-8') if self.passphrase_str else None
-        with open(self.private_key_path, 'rb') as f:
-            return serialization.load_pem_private_key(f.read(), password=password)
+        else:
+            if not self.private_key_path:
+                raise ValueError("TRANSCORP_PRIVATE_KEY_PATH is not configured in settings.")
+            password = self.passphrase_str.encode('utf-8') if self.passphrase_str else None
+            with open(self.private_key_path, 'rb') as f:
+                pem_data = f.read()
+
+        try:
+            return serialization.load_pem_private_key(pem_data, password=password)
+        except TypeError as e:
+            if "private key is not encrypted" in str(e):
+                return serialization.load_pem_private_key(pem_data, password=None)
+            raise e
 
     def generate_random_16_digits(self) -> str:
         """Generates a random 16-digit string to match the Node.js implementation."""
