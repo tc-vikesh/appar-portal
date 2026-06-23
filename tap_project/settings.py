@@ -153,3 +153,18 @@ CASHFREE_BASE_URL = env('CASHFREE_BASE_URL', default='https://sandbox.cashfree.c
 CASHFREE_CLIENT_ID = env('CASHFREE_CLIENT_ID', default=env('PAN_CLIENT_ID', default=''))
 CASHFREE_CLIENT_SECRET = env('CASHFREE_CLIENT_SECRET', default=env('CASHFREE_SECRET_KEY', default=env('PAN_CLIENT_SECRET', default='')))
 
+# M2P Encryption Security Settings
+M2P_ENCRYPTION_ENABLED = env.bool('M2P_ENCRYPTION_ENABLED', default=False)
+M2P_PUBLIC_KEY_PATH = env('M2P_PUBLIC_KEY_PATH', default='')
+TRANSCORP_PRIVATE_KEY_PATH = env('TRANSCORP_PRIVATE_KEY_PATH', default='')
+TRANSCORP_PRIVATE_KEY_PASSPHRASE = env('TRANSCORP_PRIVATE_KEY_PASSPHRASE', default='12345')
+M2P_ENTITY_KEY = env('M2P_ENTITY_KEY', default='TRANSCORP')
+
+# Configure M2P Base URL based on encryption settings
+if M2P_ENCRYPTION_ENABLED:
+    M2P_BASE_URL = env('M2P_BASE_URL', default='https://ssltest.yappay.in/Yappay')
+else:
+    M2P_BASE_URL = env('M2P_BASE_URL', default='https://kycuat.yappay.in')
+M2P_TENANT = env('M2P_TENANT', default='TRANSCORP')
+
+
