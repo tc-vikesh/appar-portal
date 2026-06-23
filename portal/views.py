@@ -1,128 +1,202 @@
 import re
+import json
 from django.shortcuts import render, redirect, get_object_or_404
 from django.views import View
 from django.contrib import messages
 from django.urls import reverse
+from django.http import JsonResponse
 
 from applications.models import Student
 from cms.models import CMSPage
 from m2p.client import M2PClient
 from twa.client import TWAClient
+from applications.aadhaar_client import AadhaarClient
 
 class LandingView(View):
     """
     GET /portal/<tracking_id>/
-    Renders landing screen for student, displaying details and collecting PAN/consent.
+    Renders landing screen for student, displaying details.
     """
     def get(self, request, tracking_id):
         student = get_object_or_404(Student, tracking_id=tracking_id)
 
         # Check if student is locked out due to too many OTP attempts
         if student.otp_locked:
-            return render(request, 'portal/locked.html', {'student': student})
+            return redirect(reverse('portal:locked', kwargs={'tracking_id': tracking_id}))
 
         return render(request, 'portal/landing.html', {'student': student})
 
+
+class AadhaarSendOTPView(View):
+    """
+    POST /portal/<tracking_id>/aadhaar/send-otp/
+    AJAX endpoint to initiate Aadhaar verification by sending an OTP.
+    """
     def post(self, request, tracking_id):
         student = get_object_or_404(Student, tracking_id=tracking_id)
 
         if student.otp_locked:
-            return render(request, 'portal/locked.html', {'student': student})
+            return JsonResponse({"success": False, "error": "Verification locked due to too many failed attempts.", "locked": True}, status=403)
 
-        pan_number = request.POST.get('pan_number', '').strip().upper()
-        consent = request.POST.get('consent') == 'on'
+        try:
+            body = json.loads(request.body)
+        except (ValueError, TypeError):
+            return JsonResponse({"success": False, "error": "Invalid JSON payload."}, status=400)
 
-        errors = {}
+        aadhaar_number = body.get('aadhaar_number', '').strip()
+        consent = body.get('consent') is True
+
         if not consent:
-            errors['consent'] = "You must accept the terms and provide consent to proceed."
+            return JsonResponse({"success": False, "error": "You must accept the terms and provide consent to proceed."}, status=400)
 
-        # PAN regex: 5 letters, 4 digits, 1 letter
-        if not pan_number:
-            errors['pan_number'] = "PAN number is required."
-        elif not re.match(r'^[A-Z]{5}[0-9]{4}[A-Z]{1}$', pan_number):
-            errors['pan_number'] = "Invalid PAN number format (should be like ABCDE1234F)."
+        if not aadhaar_number:
+            return JsonResponse({"success": False, "error": "Aadhaar number is required."}, status=400)
+        elif not re.match(r'^\d{12}$', aadhaar_number):
+            return JsonResponse({"success": False, "error": "Invalid Aadhaar number format. It must be exactly 12 digits."}, status=400)
 
-        if errors:
-            return render(request, 'portal/landing.html', {
-                'student': student,
-                'errors': errors,
-                'pan_number': pan_number,
-                'consent': consent
-            })
-
-        # Call Cashfree PAN Verification client
-        from applications.pan_client import PANClient
-        pan_client = PANClient()
+        client = AadhaarClient()
         try:
-            pan_resp = pan_client.verify_pan(pan_number, student)
-            is_valid = pan_resp.get("valid") is True
-            match_score = float(pan_resp.get("name_match_score", 0))
-
-            if not is_valid:
-                errors['pan_number'] = pan_resp.get("message") or "Invalid PAN number."
-            elif match_score < 60.0:
-                errors['pan_number'] = f"PAN name mismatch: match score is {int(match_score)}% (minimum 60% required)."
-
-            if not errors:
-                # Save verified PAN and score on student record
-                student.pan_number = pan_number
-                student.pan_verified = True
-                student.pan_name_match_score = int(match_score)
-                student.save()
-        except Exception as exc:
-            errors['pan_number'] = f"PAN verification service error: {str(exc)}"
-
-        if errors:
-            return render(request, 'portal/landing.html', {
-                'student': student,
-                'errors': errors,
-                'pan_number': pan_number,
-                'consent': consent
-            })
-
-        # Call M2P Client to generate OTP
-        m2p = M2PClient()
-        try:
-            m2p_response = m2p.generate_otp(student)
+            resp = client.aadhaar_send_otp(aadhaar_number, student)
             
-            # Check M2P generate otp success status
-            m2p_success = (
-                m2p_response.get("success") is True or 
-                m2p_response.get("result", {}).get("success") is True
-            )
+            success = resp.get("status") == "SUCCESS"
+            
+            if success:
+                ref_id = resp.get("ref_id") or resp.get("data", {}).get("ref_id")
+                # Save aadhaar number and ref_id on student record
+                student.aadhaar_number = aadhaar_number
+                student.aadhaar_ref_id = ref_id
+                student.save()
 
-            if m2p_success:
-                # Redirect to OTP verify screen
-                return redirect(reverse('portal:otp_verify', kwargs={'tracking_id': tracking_id}))
+                return JsonResponse({"success": True, "ref_id": ref_id})
             else:
-                err_msg = m2p_response.get("error") or m2p_response.get("exception") or "Failed to generate OTP from KYC provider."
-                errors['m2p'] = err_msg
-
+                err_msg = resp.get("message") or "Failed to trigger Aadhaar OTP via Cashfree."
+                return JsonResponse({"success": False, "error": err_msg})
         except Exception as exc:
-            errors['m2p'] = f"KYC server error: {str(exc)}"
+            return JsonResponse({"success": False, "error": f"Aadhaar service error: {str(exc)}"}, status=500)
 
-        return render(request, 'portal/landing.html', {
-            'student': student,
-            'errors': errors,
-            'pan_number': pan_number,
-            'consent': consent
-        })
+
+class AadhaarVerifyOTPView(View):
+    """
+    POST /portal/<tracking_id>/aadhaar/verify-otp/
+    AJAX endpoint to verify OTP, name-match and proceed to M2P registration.
+    """
+    def post(self, request, tracking_id):
+        student = get_object_or_404(Student, tracking_id=tracking_id)
+
+        if student.otp_locked:
+            return JsonResponse({"success": False, "error": "Verification locked.", "locked": True}, status=403)
+
+        try:
+            body = json.loads(request.body)
+        except (ValueError, TypeError):
+            return JsonResponse({"success": False, "error": "Invalid JSON payload."}, status=400)
+
+        otp = body.get('otp', '').strip()
+        ref_id = body.get('ref_id', '').strip()
+
+        if not otp:
+            return JsonResponse({"success": False, "error": "OTP is required."}, status=400)
+        if not ref_id:
+            return JsonResponse({"success": False, "error": "Reference ID is missing."}, status=400)
+
+        # Increment attempt count
+        student.otp_attempt_count += 1
+        student.save()
+
+        # Check attempt limit
+        if student.otp_attempt_count > 3:
+            student.otp_locked = True
+            student.save()
+            return JsonResponse({"success": False, "error": "Too many failed attempts. Verification locked.", "locked": True}, status=403)
+
+        client = AadhaarClient()
+        try:
+            # Verify OTP
+            verify_resp = client.aadhaar_verify_otp(otp, ref_id, student)
+            verify_success = verify_resp.get("status") in ("VALID", "SUCCESS")
+            
+            if not verify_success:
+                err_msg = verify_resp.get("message") or "Invalid Aadhaar OTP code."
+                # If they hit 3 attempts exactly and failed, lock them out
+                if student.otp_attempt_count >= 3:
+                    student.otp_locked = True
+                    student.save()
+                    return JsonResponse({"success": False, "error": err_msg, "locked": True}, status=403)
+                
+                remaining = max(3 - student.otp_attempt_count, 0)
+                return JsonResponse({"success": False, "error": f"{err_msg} ({remaining} attempts remaining)", "locked": False})
+
+            # Retrieve Aadhaar name
+            data_block = verify_resp.get("data", {}) if "data" in verify_resp else verify_resp
+            aadhaar_name = data_block.get("name") or data_block.get("aadhaar_name") or ""
+            
+            if not aadhaar_name:
+                return JsonResponse({"success": False, "error": "Failed to retrieve name from Aadhaar verification response."})
+
+            # Call Name Match
+            name_resp = client.name_match(student.full_name, aadhaar_name, student)
+            name_success = name_resp.get("status") == "SUCCESS" or "score" in name_resp or ("data" in name_resp and "score" in name_resp.get("data", {}))
+            
+            if not name_success:
+                err_msg = name_resp.get("message") or "Name matching service failed."
+                return JsonResponse({"success": False, "error": err_msg})
+
+            score_block = name_resp.get("data", {}) if "data" in name_resp else name_resp
+            score_val = score_block.get("score")
+            if score_val is None:
+                score_val = 0.0
+            
+            match_score = float(score_val)
+            if match_score <= 1.0:
+                match_score = match_score * 100.0
+
+            # Store match score
+            student.aadhaar_name_match_score = int(match_score)
+            if match_score < 90.0:
+                student.save()
+                return JsonResponse({"success": False, "error": f"Aadhaar name mismatch: match score is {int(match_score)}% (minimum 90% required)."})
+
+            student.aadhaar_verified = True
+            student.save()
+
+            # Proceed to register with M2P - first generate OTP and redirect to M2P verification page
+            m2p = M2PClient()
+            try:
+                m2p_response = m2p.generate_otp(student)
+                m2p_success = (
+                    m2p_response.get("success") is True or 
+                    m2p_response.get("result", {}).get("success") is True
+                )
+
+                if m2p_success:
+                    # Reset attempts count for the M2P OTP verification stage
+                    student.otp_attempt_count = 0
+                    student.save()
+                    return JsonResponse({"success": True, "redirect_url": reverse('portal:otp_verify', kwargs={'tracking_id': tracking_id})})
+                else:
+                    err_msg = m2p_response.get("error") or m2p_response.get("exception") or "Failed to generate OTP from KYC provider."
+                    return JsonResponse({"success": False, "error": f"KYC OTP generation failed: {err_msg}"})
+
+            except Exception as exc:
+                return JsonResponse({"success": False, "error": f"KYC server OTP generation error: {str(exc)}"}, status=500)
+        except Exception as exc:
+            return JsonResponse({"success": False, "error": f"Verification server error: {str(exc)}"}, status=500)
 
 
 class OTPVerifyView(View):
     """
     GET/POST /portal/<tracking_id>/otp/
-    Student enters OTP to register for MIN KYC. Enforces a maximum of 3 attempts.
+    Student enters M2P OTP to register for MIN KYC. Enforces a maximum of 3 attempts.
     """
     def get(self, request, tracking_id):
         student = get_object_or_404(Student, tracking_id=tracking_id)
 
-        # Redirect if PAN is not yet entered
-        if not student.pan_number:
+        # Redirect if Aadhaar is not yet verified
+        if not student.aadhaar_verified:
             return redirect(reverse('portal:landing', kwargs={'tracking_id': tracking_id}))
 
         if student.otp_locked:
-            return render(request, 'portal/locked.html', {'student': student})
+            return redirect(reverse('portal:locked', kwargs={'tracking_id': tracking_id}))
 
         remaining_attempts = max(3 - student.otp_attempt_count, 0)
         return render(request, 'portal/otp.html', {
@@ -133,11 +207,11 @@ class OTPVerifyView(View):
     def post(self, request, tracking_id):
         student = get_object_or_404(Student, tracking_id=tracking_id)
 
-        if not student.pan_number:
+        if not student.aadhaar_verified:
             return redirect(reverse('portal:landing', kwargs={'tracking_id': tracking_id}))
 
         if student.otp_locked:
-            return render(request, 'portal/locked.html', {'student': student})
+            return redirect(reverse('portal:locked', kwargs={'tracking_id': tracking_id}))
 
         otp = request.POST.get('otp', '').strip()
         errors = {}
@@ -159,14 +233,14 @@ class OTPVerifyView(View):
         if student.otp_attempt_count > 3:
             student.otp_locked = True
             student.save()
-            return render(request, 'portal/locked.html', {'student': student})
+            return redirect(reverse('portal:locked', kwargs={'tracking_id': tracking_id}))
 
         remaining_attempts = max(3 - student.otp_attempt_count, 0)
 
         # Call M2P Client to Register MIN KYC
         m2p = M2PClient()
         try:
-            m2p_response = m2p.register_min_kyc(student, otp, student.pan_number)
+            m2p_response = m2p.register_min_kyc(student, otp, student.aadhaar_number)
             m2p_success = (
                 m2p_response.get("success") is True or 
                 m2p_response.get("result", {}).get("success") is True or
@@ -178,8 +252,6 @@ class OTPVerifyView(View):
             )
 
             if m2p_success:
-                # Store details in student record
-                # UAT mocks or actual responses give entityId, kitNo, token
                 result_data = m2p_response.get("result", {}) if "result" in m2p_response else m2p_response
                 student.m2p_entity_id = result_data.get("entityId") or student.apaar_id
                 student.m2p_kit_no = result_data.get("kitNo") or "KIT-MOCK-12345"
@@ -212,8 +284,7 @@ class OTPVerifyView(View):
         if student.otp_attempt_count >= 3:
             student.otp_locked = True
             student.save()
-            return render(request, 'portal/locked.html', {'student': student})
-
+            return redirect(reverse('portal:locked', kwargs={'tracking_id': tracking_id}))
         return render(request, 'portal/otp.html', {
             'student': student,
             'errors': errors,
@@ -224,7 +295,7 @@ class OTPVerifyView(View):
 class SuccessView(View):
     """
     GET /portal/<tracking_id>/success/
-    Displays app download instructions using CMSPage content.
+    Displays app download instructions.
     """
     def get(self, request, tracking_id):
         student = get_object_or_404(Student, tracking_id=tracking_id)
@@ -246,3 +317,15 @@ class SuccessView(View):
             'student': student,
             'cms_page': cms_page
         })
+
+
+class LockedView(View):
+    """
+    GET /portal/<tracking_id>/locked/
+    Renders locked out screen if student has too many failed attempts.
+    """
+    def get(self, request, tracking_id):
+        student = get_object_or_404(Student, tracking_id=tracking_id)
+        if not student.otp_locked:
+            return redirect(reverse('portal:landing', kwargs={'tracking_id': tracking_id}))
+        return render(request, 'portal/locked.html', {'student': student})

@@ -32,7 +32,7 @@ class WebhookDispatcherTestCase(TestCase):
             academic_status="Active",
             current_address={"city": "Delhi", "pincode": "110016"},
             permanent_address={"city": "Jaipur", "pincode": "302001"},
-            pan_number="ABCDE1234F",
+            aadhaar_number="123456789012",
             m2p_entity_id="APAAR-ABC-11111",
             m2p_kit_no="KIT-ABC-1234",
             m2p_token="TOKEN-ABC-5678",

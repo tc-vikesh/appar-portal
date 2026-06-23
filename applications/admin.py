@@ -1,5 +1,5 @@
 from django.contrib import admin
-from applications.models import Student, ABCApiLog, PANApiLog
+from applications.models import Student, ABCApiLog, AadhaarApiLog
 
 @admin.register(Student)
 class StudentAdmin(admin.ModelAdmin):
@@ -8,7 +8,7 @@ class StudentAdmin(admin.ModelAdmin):
         'apaar_id',
         'full_name',
         'mobile',
-        'pan_verified',
+        'aadhaar_verified',
         'application_status',
         'kyc_status',
         'twa_synced',
@@ -17,7 +17,7 @@ class StudentAdmin(admin.ModelAdmin):
     list_filter = (
         'application_status',
         'kyc_status',
-        'pan_verified',
+        'aadhaar_verified',
         'twa_synced',
         'admission_year',
         'gender'
@@ -42,7 +42,7 @@ class StudentAdmin(admin.ModelAdmin):
             'fields': ('id', 'tracking_id', 'apaar_id')
         }),
         ('Personal Details', {
-            'fields': ('full_name', 'dob', 'gender', 'mobile', 'email', 'blood_group', 'pan_number', 'pan_verified', 'pan_name_match_score')
+            'fields': ('full_name', 'dob', 'gender', 'mobile', 'email', 'blood_group', 'aadhaar_number', 'aadhaar_verified', 'aadhaar_name_match_score', 'aadhaar_ref_id')
         }),
         ('Academic Details', {
             'fields': (
@@ -120,8 +120,8 @@ class ABCApiLogAdmin(admin.ModelAdmin):
         return False
 
 
-@admin.register(PANApiLog)
-class PANApiLogAdmin(admin.ModelAdmin):
+@admin.register(AadhaarApiLog)
+class AadhaarApiLogAdmin(admin.ModelAdmin):
     list_display = (
         'id',
         'student',

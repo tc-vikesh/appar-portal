@@ -43,9 +43,10 @@ class Student(models.Model):
     current_address = models.JSONField(null=True, blank=True)
     permanent_address = models.JSONField(null=True, blank=True)
     photo_path = models.CharField(max_length=500, null=True, blank=True)
-    pan_number = models.CharField(max_length=20, null=True, blank=True)
-    pan_verified = models.BooleanField(default=False)
-    pan_name_match_score = models.IntegerField(null=True, blank=True)
+    aadhaar_number = models.CharField(max_length=20, null=True, blank=True)
+    aadhaar_verified = models.BooleanField(default=False)
+    aadhaar_name_match_score = models.IntegerField(null=True, blank=True)
+    aadhaar_ref_id = models.CharField(max_length=100, null=True, blank=True)
     otp_attempt_count = models.SmallIntegerField(default=0)
     otp_locked = models.BooleanField(default=False)
     application_status = models.CharField(
@@ -168,14 +169,14 @@ class ABCApiLog(models.Model):
         return f"{self.direction.upper()} | {self.endpoint} | Status: {self.http_status}"
 
 
-class PANApiLog(models.Model):
+class AadhaarApiLog(models.Model):
     id = models.BigAutoField(primary_key=True)
     student = models.ForeignKey(
         Student,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='pan_logs'
+        related_name='aadhaar_logs'
     )
     apaar_id = models.CharField(max_length=50, null=True, blank=True, db_index=True)
     endpoint = models.CharField(max_length=50)
@@ -190,7 +191,7 @@ class PANApiLog(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        db_table = 'pan_api_logs'
+        db_table = 'aadhaar_api_logs'
 
     def __str__(self):
-        return f"PAN Verify | {self.apaar_id} | Status: {self.http_status}"
+        return f"Aadhaar Verify | {self.apaar_id} | Status: {self.http_status}"

@@ -81,14 +81,9 @@ class ABCWebhookDispatcher:
             endpoint=url,
         )
 
-        # Mask request payload PII for safety (Constitution P6)
-        masked_payload = payload.copy() if isinstance(payload, dict) else {}
-        for key in ('pan_number', 'pan', 'otp', 'password', 'token', 'auth_token', 'full_name'):
-            if key in masked_payload:
-                masked_payload[key] = '***'
-        
+        # Masking disabled as requested
         from applications.views import make_json_safe
-        log.payload = make_json_safe(masked_payload)
+        log.payload = make_json_safe(payload)
 
         start = time.monotonic()
         try:

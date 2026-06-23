@@ -4,7 +4,7 @@
 
 {% block header %}
 <h1 class="gradient-text">Verify Your Identity</h1>
-<p>Welcome, {{ student.full_name }}. To issue your Transcorp Student Card, please verify your details and enter your PAN number below.</p>
+<p>Welcome, {{ student.full_name }}. To issue your Transcorp Student Card, please verify your details and verify your Aadhaar number below.</p>
 {% endblock %}
 
 {% block content %}
@@ -107,48 +107,56 @@
 </div>
 
 <!-- Forms & Input fields -->
-<form method="POST" action="">
+<form method="POST" action="" onsubmit="return false;">
     {% csrf_token %}
-    
-    {% if errors.m2p %}
-    <div class="alert-error">
-        <strong>⚠️ Error:</strong> {{ errors.m2p }}
-    </div>
-    {% endif %}
 
     <div class="form-group">
-        <label for="pan_number" class="form-label">Permanent Account Number (PAN)</label>
-        <input 
-            type="text" 
-            id="pan_number" 
-            name="pan_number" 
-            class="form-input" 
-            placeholder="ABCDE1234F" 
-            value="{{ pan_number|default:'' }}" 
-            autocomplete="off"
-            maxlength="10"
-        >
-        {% if errors.pan_number %}
-        <span style="color: var(--error); font-size: 12px; margin-top: 6px; display: block; text-align: left;">
-            {{ errors.pan_number }}
-        </span>
-        {% endif %}
+        <label for="aadhaar_number" class="form-label">Aadhaar Number (12 Digits)</label>
+        <div class="input-with-button">
+            <input 
+                type="text" 
+                id="aadhaar_number" 
+                name="aadhaar_number" 
+                class="form-input" 
+                placeholder="123456789012" 
+                value="{{ student.aadhaar_number|default:'' }}" 
+                autocomplete="off"
+                maxlength="12"
+            >
+            <button type="button" id="btn-verify-aadhaar" class="btn btn-inline">Verify Aadhaar</button>
+        </div>
+        <span id="error-aadhaar" class="error-text"></span>
     </div>
 
     <label class="checkbox-container">
-        <input type="checkbox" name="consent" {% if consent %}checked{% endif %}>
+        <input type="checkbox" id="consent" name="consent">
         <span class="checkmark"></span>
         <span class="checkbox-text">
-            I hereby give my explicit consent to Transcorp International Ltd. to verify my PAN details with NSDL/Govt databases for the purpose of issuing my student card and completing my KYC checks.
+            I hereby give my explicit consent to Transcorp International Ltd. to verify my Aadhaar details with UIDAI/Govt databases for the purpose of issuing my student card and completing my KYC checks.
         </span>
     </label>
-    {% if errors.consent %}
-    <div style="color: var(--error); font-size: 12px; margin-top: -16px; margin-bottom: 24px; text-align: left;">
-        {{ errors.consent }}
-    </div>
-    {% endif %}
+    <span id="error-consent" class="error-text" style="display: block; margin-top: -16px; margin-bottom: 24px;"></span>
 
-    <button type="submit" class="btn">Proceed to Verification</button>
+    <!-- OTP verification container -->
+    <div id="otp-container" class="form-group" style="display: none; margin-top: 24px; animation: fadeIn 0.4s ease-out;">
+        <div style="background: rgba(255, 255, 255, 0.03); border: 1px dashed rgba(255, 255, 255, 0.15); border-radius: 12px; padding: 14px; margin-bottom: 18px; font-size: 13.5px; text-align: left;">
+            <span style="color: var(--accent-secondary); font-weight: 600;">✅ OTP Triggered!</span> An Aadhaar OTP has been sent to your UIDAI registered mobile number.
+        </div>
+        
+        <label for="otp" class="form-label" style="text-align: center;">6-Digit Aadhaar OTP Code</label>
+        <input 
+            type="text" 
+            id="otp" 
+            name="otp" 
+            class="form-input" 
+            placeholder="000000" 
+            style="text-align: center; font-size: 26px; letter-spacing: 8px; font-weight: 700; max-width: 250px; margin: 0 auto 16px auto; display: block;" 
+            autocomplete="off"
+            maxlength="6"
+        >
+        <span id="error-otp" class="error-text" style="text-align: center; display: block; margin-bottom: 16px;"></span>
+        <button type="button" id="btn-confirm-otp" class="btn" style="max-width: 250px; margin: 0 auto; display: block;">Confirm OTP</button>
+    </div>
 </form>
 {% endblock %}
 
@@ -191,5 +199,219 @@
     .info-value.address {
         line-height: 1.4;
     }
+
+    .input-with-button {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+    }
+    
+    .input-with-button .form-input {
+        flex: 1;
+        margin-bottom: 0;
+        height: 50px;
+    }
+    
+    .btn-inline {
+        margin-top: 0 !important;
+        white-space: nowrap;
+        padding: 0 24px;
+        height: 50px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: auto !important;
+        flex-shrink: 0;
+    }
+    
+    .error-text {
+        color: var(--error);
+        font-size: 12.5px;
+        margin-top: 6px;
+        display: none;
+        text-align: left;
+        font-weight: 500;
+    }
+    
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
 </style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const trackingId = "{{ student.tracking_id }}";
+    const aadhaarInput = document.getElementById('aadhaar_number');
+    const verifyBtn = document.getElementById('btn-verify-aadhaar');
+    const consentCheckbox = document.getElementById('consent');
+    const otpContainer = document.getElementById('otp-container');
+    const otpInput = document.getElementById('otp');
+    const confirmBtn = document.getElementById('btn-confirm-otp');
+    
+    const errorAadhaar = document.getElementById('error-aadhaar');
+    const errorConsent = document.getElementById('error-consent');
+    const errorOtp = document.getElementById('error-otp');
+    
+    // Create inline error banner at top of form
+    const globalAlert = document.createElement('div');
+    globalAlert.className = 'alert-error';
+    globalAlert.style.display = 'none';
+    globalAlert.style.marginBottom = '20px';
+    document.querySelector('form').prepend(globalAlert);
+    
+    let activeRefId = "";
+    
+    // Restrict Aadhaar input to digits only
+    aadhaarInput.addEventListener('input', function() {
+        this.value = this.value.replace(/\D/g, '');
+    });
+    
+    // Restrict OTP input to digits only
+    otpInput.addEventListener('input', function() {
+        this.value = this.value.replace(/\D/g, '');
+    });
+
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+    const csrftoken = getCookie('csrftoken');
+
+    verifyBtn.addEventListener('click', function() {
+        // Reset errors
+        errorAadhaar.style.display = 'none';
+        errorConsent.style.display = 'none';
+        globalAlert.style.display = 'none';
+        
+        const aadhaarVal = aadhaarInput.value.replace(/\s+/g, '').trim();
+        const consentVal = consentCheckbox.checked;
+        
+        let hasError = false;
+        if (!aadhaarVal) {
+            errorAadhaar.innerText = "Aadhaar number is required.";
+            errorAadhaar.style.display = 'block';
+            hasError = true;
+        } else if (!/^\d{12}$/.test(aadhaarVal)) {
+            errorAadhaar.innerText = "Invalid Aadhaar format. Must be exactly 12 digits.";
+            errorAadhaar.style.display = 'block';
+            hasError = true;
+        }
+        
+        if (!consentVal) {
+            errorConsent.innerText = "You must accept the terms and provide consent to proceed.";
+            errorConsent.style.display = 'block';
+            hasError = true;
+        }
+        
+        if (hasError) return;
+        
+        // Disable input and button
+        aadhaarInput.disabled = true;
+        verifyBtn.disabled = true;
+        verifyBtn.innerText = "Sending...";
+        
+        fetch(`/portal/${trackingId}/aadhaar/send-otp/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrftoken
+            },
+            body: JSON.stringify({
+                aadhaar_number: aadhaarVal,
+                consent: consentVal
+            })
+        })
+        .then(response => response.json().then(data => ({ status: response.status, body: data })))
+        .then(({ status, body }) => {
+            if (body.success) {
+                activeRefId = body.ref_id;
+                verifyBtn.innerText = "Aadhaar Sent";
+                consentCheckbox.disabled = true;
+                otpContainer.style.display = 'block';
+                otpInput.focus();
+            } else {
+                // Show error
+                globalAlert.innerHTML = `<strong>⚠️ Error:</strong> ${body.error || "Failed to trigger OTP."}`;
+                globalAlert.style.display = 'block';
+                
+                // Re-enable
+                aadhaarInput.disabled = false;
+                verifyBtn.disabled = false;
+                verifyBtn.innerText = "Verify Aadhaar";
+            }
+        })
+        .catch(err => {
+            globalAlert.innerHTML = "<strong>⚠️ Error:</strong> Network error occurred. Please check connection and try again.";
+            globalAlert.style.display = 'block';
+            
+            aadhaarInput.disabled = false;
+            verifyBtn.disabled = false;
+            verifyBtn.innerText = "Verify Aadhaar";
+        });
+    });
+
+    confirmBtn.addEventListener('click', function() {
+        errorOtp.style.display = 'none';
+        globalAlert.style.display = 'none';
+        
+        const otpVal = otpInput.value.trim();
+        if (!otpVal || !/^\d{6}$/.test(otpVal)) {
+            errorOtp.innerText = "OTP must be exactly 6 digits.";
+            errorOtp.style.display = 'block';
+            return;
+        }
+        
+        confirmBtn.disabled = true;
+        confirmBtn.innerText = "Verifying...";
+        
+        fetch(`/portal/${trackingId}/aadhaar/verify-otp/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrftoken
+            },
+            body: JSON.stringify({
+                otp: otpVal,
+                ref_id: activeRefId
+            })
+        })
+        .then(response => response.json().then(data => ({ status: response.status, body: data })))
+        .then(({ status, body }) => {
+            if (body.success) {
+                confirmBtn.innerText = "Success!";
+                window.location.href = body.redirect_url;
+            } else {
+                globalAlert.innerHTML = `<strong>⚠️ Verification Failed:</strong> ${body.error || "Verification failed."}`;
+                globalAlert.style.display = 'block';
+                
+                if (body.locked) {
+                    window.location.href = `/portal/${trackingId}/locked/`;
+                } else {
+                    confirmBtn.disabled = false;
+                    confirmBtn.innerText = "Confirm OTP";
+                }
+            }
+        })
+        .catch(err => {
+            globalAlert.innerHTML = "<strong>⚠️ Error:</strong> Network error occurred during validation.";
+            globalAlert.style.display = 'block';
+            confirmBtn.disabled = false;
+            confirmBtn.innerText = "Confirm OTP";
+        });
+    });
+});
+</script>
 {% endblock %}

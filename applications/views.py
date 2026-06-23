@@ -105,27 +105,9 @@ class LoggingAPIView(APIView):
                 except Exception:
                     pass
 
-            # PII Discipline: Mask sensitive parameters in logs (Constitution P6)
-            masked_payload = None
-            if isinstance(payload, dict):
-                masked_payload = payload.copy()
-                for key in ('pan_number', 'pan', 'otp', 'password', 'token', 'auth_token', 'full_name'):
-                    if key in masked_payload:
-                        masked_payload[key] = '***'
-
-            log.request_payload = make_json_safe(masked_payload)
-
-            # Mask sensitive parameters in response
-            masked_response = None
-            if isinstance(response_body, dict):
-                masked_response = response_body.copy()
-                for key in ('pan_number', 'pan', 'otp', 'token', 'auth_token', 'full_name'):
-                    if key in masked_response:
-                        masked_response[key] = '***'
-            else:
-                masked_response = response_body
-
-            log.response_payload = make_json_safe(masked_response)
+            # PII Discipline: Masking disabled as requested
+            log.request_payload = make_json_safe(payload)
+            log.response_payload = make_json_safe(response_body)
             log.http_status = http_status_code
             log.success = success
 

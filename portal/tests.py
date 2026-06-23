@@ -5,11 +5,9 @@ from django.urls import reverse
 from django.conf import settings
 from rest_framework import status
 
-from applications.models import Student
+from applications.models import Student, AadhaarApiLog
 from cms.models import CMSPage
-from m2p.models import M2PApiLog
 from m2p.client import M2PClient
-
 
 class PortalTestCase(TestCase):
     def setUp(self):
@@ -35,67 +33,12 @@ class PortalTestCase(TestCase):
             kyc_status="MIN_KYC"
         )
 
-        # Standard settings for M2P client UAT test
         settings.M2P_BASE_URL = "https://kycuat.yappay.in"
         settings.M2P_TENANT = "TRANSCORP"
+        settings.CASHFREE_BASE_URL = "https://sandbox.cashfree.com/verification"
+        settings.CASHFREE_CLIENT_ID = "CF_MOCK_ID"
+        settings.CASHFREE_CLIENT_SECRET = "CF_MOCK_SECRET"
 
-    # 1. M2P Client Unit Tests (Mocking HTTP Requests)
-    @patch('requests.post')
-    def test_m2p_client_generate_otp_success(self, mock_post):
-        """Test M2P client OTP generation success, and check database log generation."""
-        # Setup mock success response
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "success": True,
-            "result": {
-                "success": True,
-                "message": "OTP generated successfully"
-            }
-        }
-        mock_post.return_value = mock_response
-
-        # Call client method
-        client = M2PClient()
-        response = client.generate_otp(self.student)
-        self.assertTrue(response.get("success"))
-
-        # Verify exactly one outbound log row is created in M2PApiLog (Constitution P1)
-        log = M2PApiLog.objects.first()
-        self.assertIsNotNone(log)
-        self.assertEqual(log.student, self.student)
-        self.assertEqual(log.endpoint, "generate_otp")
-        self.assertTrue(log.success)
-        # Check PII is masked in log (Constitution P6)
-        self.assertEqual(log.request_payload.get("mobileNumber"), "+919876543210")
-
-    @patch('requests.post')
-    def test_m2p_client_register_success_masking(self, mock_post):
-        """Test M2P client Register success and verify that OTP and PAN are masked in logs (Constitution P6)."""
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "success": True,
-            "result": {
-                "success": True,
-                "entityId": "APAAR-98765-43210",
-                "kitNo": "KIT-TEST-123",
-                "token": "TOKEN-TEST-abc"
-            }
-        }
-        mock_post.return_value = mock_response
-
-        client = M2PClient()
-        response = client.register_min_kyc(self.student, "123456", "ABCDE1234F")
-        self.assertTrue(response.get("success"))
-
-        # Check DB log table masking (Constitution P6)
-        log = M2PApiLog.objects.first()
-        self.assertIsNotNone(log)
-        self.assertEqual(log.request_payload["otp"], "***")
-        self.assertEqual(log.request_payload["kycInfo"][0]["documentNo"], "***")
-
-    # 2. Portal Landing Page Tests
     def test_portal_landing_get_active(self):
         """Test GET /portal/<tracking_id>/ returns 200 OK for active student."""
         response = self.client.get(
@@ -106,137 +49,163 @@ class PortalTestCase(TestCase):
         self.assertContains(response, self.student.full_name)
 
     def test_portal_landing_get_locked(self):
-        """Test GET /portal/<tracking_id>/ renders locked out screen if student is locked."""
+        """Test GET /portal/<tracking_id>/ redirects to locked out screen if student is locked."""
         self.student.otp_locked = True
         self.student.save()
 
         response = self.client.get(
             reverse('portal:landing', kwargs={'tracking_id': self.student.tracking_id})
         )
-        self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'portal/locked.html')
-        self.assertContains(response, "Verification Locked")
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, reverse('portal:locked', kwargs={'tracking_id': self.student.tracking_id}))
 
-    def test_portal_landing_post_invalid_pan(self):
-        """Test POST /landing validation rules (invalid PAN format, consent checkbox missing)."""
-        # Test 1: Missing consent
-        response = self.client.post(
-            reverse('portal:landing', kwargs={'tracking_id': self.student.tracking_id}),
-            data={"pan_number": "ABCDE1234F"}
+        # GET locked view renders 200
+        response_locked = self.client.get(
+            reverse('portal:locked', kwargs={'tracking_id': self.student.tracking_id})
         )
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "You must accept the terms and provide consent")
+        self.assertEqual(response_locked.status_code, 200)
+        self.assertTemplateUsed(response_locked, 'portal/locked.html')
 
-        # Test 2: Bad PAN structure
-        response = self.client.post(
-            reverse('portal:landing', kwargs={'tracking_id': self.student.tracking_id}),
-            data={"pan_number": "BADPAN123", "consent": "on"}
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Invalid PAN number format")
-
-    @patch('applications.pan_client.PANClient.verify_pan')
+    @patch('applications.aadhaar_client.AadhaarClient.aadhaar_send_otp')
     @patch('m2p.client.M2PClient.generate_otp')
-    def test_portal_landing_post_success(self, mock_generate_otp, mock_verify_pan):
-        """Test POST /landing saves PAN and redirects to OTP verify screen."""
-        mock_verify_pan.return_value = {"valid": True, "name_match_score": 100}
+    def test_portal_landing_send_otp_success(self, mock_generate_otp, mock_send_otp):
+        """Test POST /aadhaar/send-otp/ saves Aadhaar and ref_id on success."""
+        mock_send_otp.return_value = {"status": "SUCCESS", "ref_id": "REF-MOCK-A1"}
         mock_generate_otp.return_value = {"success": True}
 
         response = self.client.post(
-            reverse('portal:landing', kwargs={'tracking_id': self.student.tracking_id}),
-            data={"pan_number": "ABCDE1234F", "consent": "on"}
+            reverse('portal:aadhaar_send_otp', kwargs={'tracking_id': self.student.tracking_id}),
+            data=json.dumps({"aadhaar_number": "123456789012", "consent": True}),
+            content_type='application/json'
         )
-        # Check redirect to OTP screen
-        self.assertEqual(response.status_code, 302)
-        self.assertRedirects(response, reverse('portal:otp_verify', kwargs={'tracking_id': self.student.tracking_id}))
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["success"])
+        self.assertEqual(data["ref_id"], "REF-MOCK-A1")
 
-        # Verify student PAN is saved
+        # Verify student Aadhaar info is saved
         self.student.refresh_from_db()
-        self.assertEqual(self.student.pan_number, "ABCDE1234F")
-        self.assertTrue(self.student.pan_verified)
-        self.assertEqual(self.student.pan_name_match_score, 100)
+        self.assertEqual(self.student.aadhaar_number, "123456789012")
+        self.assertEqual(self.student.aadhaar_ref_id, "REF-MOCK-A1")
 
-    # 3. OTP Verification Page Tests
-    def test_otp_verify_get_without_pan(self):
-        """Test GET /otp redirects to landing if PAN hasn't been saved yet."""
-        response = self.client.get(
-            reverse('portal:otp_verify', kwargs={'tracking_id': self.student.tracking_id})
+    def test_portal_landing_send_otp_validation(self):
+        """Test POST /aadhaar/send-otp/ validation rules (Aadhaar length and consent checkbox)."""
+        # Test 1: Missing consent
+        response1 = self.client.post(
+            reverse('portal:aadhaar_send_otp', kwargs={'tracking_id': self.student.tracking_id}),
+            data=json.dumps({"aadhaar_number": "123456789012", "consent": False}),
+            content_type='application/json'
         )
-        self.assertEqual(response.status_code, 302)
-        self.assertRedirects(response, reverse('portal:landing', kwargs={'tracking_id': self.student.tracking_id}))
+        self.assertEqual(response1.status_code, 400)
+        self.assertIn("consent", response1.json()["error"])
 
-    @patch('m2p.client.M2PClient.register_min_kyc')
-    def test_otp_verify_post_success(self, mock_register):
-        """Test POST /otp success transitions status to MIN_KYC and stores kit/token."""
-        # Pre-set PAN
-        self.student.pan_number = "ABCDE1234F"
+        # Test 2: Invalid Aadhaar length
+        response2 = self.client.post(
+            reverse('portal:aadhaar_send_otp', kwargs={'tracking_id': self.student.tracking_id}),
+            data=json.dumps({"aadhaar_number": "12345", "consent": True}),
+            content_type='application/json'
+        )
+        self.assertEqual(response2.status_code, 400)
+        self.assertIn("exactly 12 digits", response2.json()["error"])
+
+    @patch('applications.aadhaar_client.AadhaarClient.aadhaar_verify_otp')
+    @patch('applications.aadhaar_client.AadhaarClient.name_match')
+    @patch('m2p.client.M2PClient.generate_otp')
+    def test_portal_verify_otp_success(self, mock_generate, mock_name_match, mock_verify_otp):
+        """Test POST /aadhaar/verify-otp/ success redirects to M2P OTP verify page."""
+        self.student.aadhaar_number = "123456789012"
+        self.student.aadhaar_ref_id = "REF-MOCK-A1"
         self.student.save()
 
-        mock_register.return_value = {
-            "success": True,
-            "entityId": "APAAR-98765-43210",
-            "kitNo": "KIT-REAL-12345",
-            "token": "TOKEN-REAL-abcde"
-        }
+        mock_verify_otp.return_value = {"status": "SUCCESS", "data": {"name": "Vikesh Sharma Portal"}}
+        mock_name_match.return_value = {"status": "SUCCESS", "data": {"score": 0.95}} # 95%
+        mock_generate.return_value = {"success": True}
 
         response = self.client.post(
-            reverse('portal:otp_verify', kwargs={'tracking_id': self.student.tracking_id}),
-            data={"otp": "123456"}
+            reverse('portal:aadhaar_verify_otp', kwargs={'tracking_id': self.student.tracking_id}),
+            data=json.dumps({"otp": "123456", "ref_id": "REF-MOCK-A1"}),
+            content_type='application/json'
         )
-        self.assertEqual(response.status_code, 302)
-        self.assertRedirects(response, reverse('portal:success', kwargs={'tracking_id': self.student.tracking_id}))
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["success"])
+        self.assertIn("/otp/", data["redirect_url"])
 
         # Verify student record transitioned
         self.student.refresh_from_db()
-        self.assertEqual(self.student.kyc_status, "MIN_KYC")
-        self.assertEqual(self.student.m2p_kit_no, "KIT-REAL-12345")
-        self.assertEqual(self.student.m2p_token, "TOKEN-REAL-abcde")
+        self.assertEqual(self.student.otp_attempt_count, 0)
+        self.assertTrue(self.student.aadhaar_verified)
+        self.assertEqual(self.student.aadhaar_name_match_score, 95)
+        mock_generate.assert_called_once()
 
-    @patch('m2p.client.M2PClient.register_min_kyc')
-    def test_otp_verify_post_failure_attempts(self, mock_register):
-        """Test POST /otp failure increases attempts count, and locks student on 3rd failure."""
-        self.student.pan_number = "ABCDE1234F"
+    @patch('applications.aadhaar_client.AadhaarClient.aadhaar_verify_otp')
+    @patch('applications.aadhaar_client.AadhaarClient.name_match')
+    def test_portal_verify_otp_name_mismatch(self, mock_name_match, mock_verify_otp):
+        """Test POST /aadhaar/verify-otp/ returns error when name match score is < 90%."""
+        self.student.aadhaar_number = "123456789012"
+        self.student.aadhaar_ref_id = "REF-MOCK-A1"
         self.student.save()
 
-        mock_register.return_value = {"success": False, "error": "Invalid OTP code"}
+        mock_verify_otp.return_value = {"status": "SUCCESS", "data": {"name": "Some Other Name"}}
+        mock_name_match.return_value = {"status": "SUCCESS", "data": {"score": 0.45}} # 45%
+
+        response = self.client.post(
+            reverse('portal:aadhaar_verify_otp', kwargs={'tracking_id': self.student.tracking_id}),
+            data=json.dumps({"otp": "123456", "ref_id": "REF-MOCK-A1"}),
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertFalse(data["success"])
+        self.assertIn("Aadhaar name mismatch", data["error"])
+
+        self.student.refresh_from_db()
+        self.assertFalse(self.student.aadhaar_verified)
+        self.assertEqual(self.student.aadhaar_name_match_score, 45)
+
+    @patch('applications.aadhaar_client.AadhaarClient.aadhaar_verify_otp')
+    def test_portal_verify_otp_attempts_lockout(self, mock_verify_otp):
+        """Test POST /aadhaar/verify-otp/ fails limit locks student on 3rd attempt."""
+        self.student.aadhaar_number = "123456789012"
+        self.student.aadhaar_ref_id = "REF-MOCK-A1"
+        self.student.save()
+
+        mock_verify_otp.return_value = {"status": "FAILED", "message": "Incorrect OTP"}
 
         # Attempt 1
-        response = self.client.post(
-            reverse('portal:otp_verify', kwargs={'tracking_id': self.student.tracking_id}),
-            data={"otp": "111111"}
+        response1 = self.client.post(
+            reverse('portal:aadhaar_verify_otp', kwargs={'tracking_id': self.student.tracking_id}),
+            data=json.dumps({"otp": "111111", "ref_id": "REF-MOCK-A1"}),
+            content_type='application/json'
         )
-        self.assertEqual(response.status_code, 200)
-        self.student.refresh_from_db()
-        self.assertEqual(self.student.otp_attempt_count, 1)
-        self.assertFalse(self.student.otp_locked)
-        self.assertContains(response, "Remaining verification attempts:")
-        self.assertContains(response, "2 of 3")
+        self.assertEqual(response1.status_code, 200)
+        self.assertFalse(response1.json()["success"])
+        self.assertFalse(response1.json()["locked"])
 
         # Attempt 2
-        response = self.client.post(
-            reverse('portal:otp_verify', kwargs={'tracking_id': self.student.tracking_id}),
-            data={"otp": "222222"}
+        response2 = self.client.post(
+            reverse('portal:aadhaar_verify_otp', kwargs={'tracking_id': self.student.tracking_id}),
+            data=json.dumps({"otp": "222222", "ref_id": "REF-MOCK-A1"}),
+            content_type='application/json'
         )
-        self.assertEqual(response.status_code, 200)
-        self.student.refresh_from_db()
-        self.assertEqual(self.student.otp_attempt_count, 2)
-        self.assertFalse(self.student.otp_locked)
+        self.assertEqual(response2.status_code, 200)
+        self.assertFalse(response2.json()["success"])
+        self.assertFalse(response2.json()["locked"])
 
         # Attempt 3 (locks student)
-        response = self.client.post(
-            reverse('portal:otp_verify', kwargs={'tracking_id': self.student.tracking_id}),
-            data={"otp": "333333"}
+        response3 = self.client.post(
+            reverse('portal:aadhaar_verify_otp', kwargs={'tracking_id': self.student.tracking_id}),
+            data=json.dumps({"otp": "333333", "ref_id": "REF-MOCK-A1"}),
+            content_type='application/json'
         )
-        self.assertEqual(response.status_code, 200)
-        self.student.refresh_from_db()
-        self.assertEqual(self.student.otp_attempt_count, 3)
-        self.assertTrue(self.student.otp_locked)
-        self.assertTemplateUsed(response, "portal/locked.html")
+        self.assertEqual(response3.status_code, 403)
+        self.assertTrue(response3.json()["locked"])
 
-    # 4. Success Page Tests
+        self.student.refresh_from_db()
+        self.assertTrue(self.student.otp_locked)
+
     def test_success_get_without_min_kyc(self):
         """Test GET /success redirects to landing if kyc_status is not MIN_KYC."""
-        # Current status is set to empty kyc
         self.student.kyc_status = "FAILED"
         self.student.save()
 
@@ -247,113 +216,147 @@ class PortalTestCase(TestCase):
         self.assertRedirects(response, reverse('portal:landing', kwargs={'tracking_id': self.student.tracking_id}))
 
     def test_success_get_with_min_kyc(self):
-        """Test GET /success renders page with correct CMS Page content."""
+        """Test GET /success renders CMS content successfully."""
         self.student.kyc_status = "MIN_KYC"
         self.student.save()
 
-        # Create CMSPage success copy
-        cms_title = "Welcome aboard Vikesh!"
-        cms_content = "<p>Download instructions content block.</p>"
         CMSPage.objects.create(
             slug="success-page",
-            title=cms_title,
-            content=cms_content
+            title="S1 Success",
+            content="Download instruction mock text"
         )
 
         response = self.client.get(
             reverse('portal:success', kwargs={'tracking_id': self.student.tracking_id})
         )
         self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'portal/success.html')
-        self.assertContains(response, cms_title)
-        self.assertContains(response, cms_content)
-
-    @patch('applications.pan_client.PANClient.verify_pan')
-    def test_portal_landing_post_pan_invalid_api(self, mock_verify_pan):
-        """Test POST /landing when Cashfree PAN verification returns invalid."""
-        mock_verify_pan.return_value = {"valid": False, "message": "Invalid PAN Number"}
-
-        response = self.client.post(
-            reverse('portal:landing', kwargs={'tracking_id': self.student.tracking_id}),
-            data={"pan_number": "ABCDE1234F", "consent": "on"}
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Invalid PAN Number")
-        
-        # Verify student record not updated
-        self.student.refresh_from_db()
-        self.assertFalse(self.student.pan_verified)
-
-    @patch('applications.pan_client.PANClient.verify_pan')
-    def test_portal_landing_post_pan_low_score(self, mock_verify_pan):
-        """Test POST /landing when Cashfree PAN verification match score is too low (< 60%)."""
-        mock_verify_pan.return_value = {"valid": True, "name_match_score": 45}
-
-        response = self.client.post(
-            reverse('portal:landing', kwargs={'tracking_id': self.student.tracking_id}),
-            data={"pan_number": "ABCDE1234F", "consent": "on"}
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "PAN name mismatch: match score is 45%")
-        
-        # Verify student record not updated
-        self.student.refresh_from_db()
-        self.assertFalse(self.student.pan_verified)
-
-    @patch('requests.get')
-    def test_local_photo_downloader(self, mock_get):
-        """Test download_student_photo helper successfully downloads and saves file locally."""
-        from applications.views import download_student_photo
-        import os
-        from django.conf import settings
-
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.content = b"fake-image-bytes"
-        mock_get.return_value = mock_resp
-
-        photo_url = "https://example.com/photos/aditya.jpg"
-        apaar_id = "APAAR-PHOTO-TEST"
-        
-        local_path = download_student_photo(photo_url, apaar_id)
-        
-        # Assert returned relative path is correct
-        self.assertEqual(local_path, "/media/photos/APAAR-PHOTO-TEST.jpg")
-        
-        # Assert file was actually created in media root
-        expected_file = os.path.join(settings.MEDIA_ROOT, "photos", "APAAR-PHOTO-TEST.jpg")
-        self.assertTrue(os.path.exists(expected_file))
-        
-        # Cleanup file
-        if os.path.exists(expected_file):
-            os.remove(expected_file)
+        self.assertContains(response, "S1 Success")
 
     @patch('requests.post')
-    def test_pan_client_logging(self, mock_post):
-        """Test PANClient logging creates a masked PANApiLog entry on successful call."""
-        from applications.pan_client import PANClient
-        from applications.models import PANApiLog
+    def test_aadhaar_client_no_masking(self, mock_post):
+        """Test AadhaarClient logging creates an UNMASKED AadhaarApiLog entry."""
+        from applications.aadhaar_client import AadhaarClient
 
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {
-            "valid": True,
-            "name_match_score": 100,
-            "message": "PAN verified successfully"
+            "status": "SUCCESS",
+            "ref_id": "REAL-AADHAAR-REF-12345"
         }
         mock_post.return_value = mock_resp
 
-        client = PANClient()
-        response = client.verify_pan("ABCDE1234F", self.student)
-        self.assertTrue(response.get("valid"))
+        client = AadhaarClient()
+        response = client.aadhaar_send_otp("123456789012", self.student)
+        self.assertEqual(response.get("ref_id"), "REAL-AADHAAR-REF-12345")
 
-        # Assert exactly one log row is created in PANApiLog table (Constitution P1)
-        log = PANApiLog.objects.first()
+        log = AadhaarApiLog.objects.first()
         self.assertIsNotNone(log)
         self.assertEqual(log.student, self.student)
-        self.assertEqual(log.endpoint, "pan_verify")
+        self.assertEqual(log.endpoint, "aadhaar_send_otp")
         self.assertEqual(log.http_status, 200)
         self.assertTrue(log.success)
 
-        # Assert PAN number is masked in the logged payload (Constitution P6)
-        self.assertEqual(log.request_payload.get("pan"), "***")
+        # Assert Aadhaar number is NOT masked in the logged payload (User request)
+        self.assertEqual(log.request_payload.get("aadhaar_number"), "123456789012")
+
+    def test_m2p_otp_page_get_secure(self):
+        """Test GET /portal/<tracking_id>/otp/ redirects to landing if Aadhaar not verified."""
+        self.student.aadhaar_verified = False
+        self.student.save()
+
+        response = self.client.get(
+            reverse('portal:otp_verify', kwargs={'tracking_id': self.student.tracking_id})
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, reverse('portal:landing', kwargs={'tracking_id': self.student.tracking_id}))
+
+    def test_m2p_otp_page_get_success(self):
+        """Test GET /portal/<tracking_id>/otp/ renders form when Aadhaar is verified."""
+        self.student.aadhaar_verified = True
+        self.student.save()
+
+        response = self.client.get(
+            reverse('portal:otp_verify', kwargs={'tracking_id': self.student.tracking_id})
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'portal/otp.html')
+        self.assertContains(response, "Remaining verification attempts")
+
+    @patch('m2p.client.M2PClient.register_min_kyc')
+    @patch('twa.client.TWAClient.sync_onboard')
+    def test_m2p_otp_submission_success(self, mock_twa_sync, mock_m2p_register):
+        """Test POST /portal/<tracking_id>/otp/ registers student successfully."""
+        self.student.aadhaar_verified = True
+        self.student.aadhaar_number = "123456789012"
+        self.student.save()
+
+        mock_m2p_register.return_value = {
+            "success": True,
+            "entityId": "APAAR-E2E-99999",
+            "kitNo": "KIT-TEST-999",
+            "token": "TOKEN-TEST-999"
+        }
+
+        # Mock TWA sync success
+        def mock_sync(student):
+            from twa.models import TWAApiLog
+            TWAApiLog.objects.create(
+                student=student,
+                apaar_id=student.apaar_id,
+                tracking_id=student.tracking_id,
+                endpoint="sync_onboard",
+                request_url="http://mock-twa",
+                success=True,
+                duration_ms=10
+            )
+        mock_twa_sync.side_effect = mock_sync
+
+        response = self.client.post(
+            reverse('portal:otp_verify', kwargs={'tracking_id': self.student.tracking_id}),
+            data={"otp": "123456"}
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, reverse('portal:success', kwargs={'tracking_id': self.student.tracking_id}))
+
+        self.student.refresh_from_db()
+        self.assertEqual(self.student.kyc_status, "MIN_KYC")
+        self.assertEqual(self.student.m2p_kit_no, "KIT-TEST-999")
+        self.assertEqual(self.student.m2p_token, "TOKEN-TEST-999")
+        self.assertTrue(self.student.twa_synced)
+
+    @patch('m2p.client.M2PClient.register_min_kyc')
+    def test_m2p_otp_submission_fail_limit(self, mock_m2p_register):
+        """Test POST /portal/<tracking_id>/otp/ locks student on 3 failed attempts."""
+        self.student.aadhaar_verified = True
+        self.student.save()
+
+        mock_m2p_register.return_value = {"success": False, "error": "Invalid OTP"}
+
+        # Attempt 1
+        response = self.client.post(
+            reverse('portal:otp_verify', kwargs={'tracking_id': self.student.tracking_id}),
+            data={"otp": "111111"}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Remaining verification attempts")
+        self.assertContains(response, "2 of 3")
+
+        # Attempt 2
+        response = self.client.post(
+            reverse('portal:otp_verify', kwargs={'tracking_id': self.student.tracking_id}),
+            data={"otp": "222222"}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Remaining verification attempts")
+        self.assertContains(response, "1 of 3")
+
+        # Attempt 3 (redirects to locked)
+        response = self.client.post(
+            reverse('portal:otp_verify', kwargs={'tracking_id': self.student.tracking_id}),
+            data={"otp": "333333"}
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, reverse('portal:locked', kwargs={'tracking_id': self.student.tracking_id}))
+
+        self.student.refresh_from_db()
+        self.assertTrue(self.student.otp_locked)

@@ -104,15 +104,8 @@ class WebhookLoggingAPIView(APIView):
                 except Exception:
                     pass
 
-            # Mask request payload PII
-            masked_payload = None
-            if isinstance(payload, dict):
-                masked_payload = payload.copy()
-                for key in ('pan_number', 'pan', 'otp', 'password', 'token', 'auth_token', 'full_name'):
-                    if key in masked_payload:
-                        masked_payload[key] = '***'
-
-            log.payload = make_json_safe(masked_payload)
+            # Masking disabled as requested
+            log.payload = make_json_safe(payload)
 
             # Measure duration and complete audit save in finally block (Constitution P1)
             log.duration_ms = int((time.monotonic() - start_time) * 1000)

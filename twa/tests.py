@@ -31,7 +31,7 @@ class TWATestCase(TestCase):
             academic_status="Active",
             current_address={"city": "Delhi", "pincode": "110016"},
             permanent_address={"city": "Jaipur", "pincode": "302001"},
-            pan_number="ABCDE1234F",
+            aadhaar_number="123456789012",
             m2p_entity_id="APAAR-12345-67890",
             m2p_kit_no="KIT-TEST-1234",
             m2p_token="TOKEN-TEST-5678",
@@ -72,9 +72,9 @@ class TWATestCase(TestCase):
 
         # Verify that request payload is logged and has core fields
         self.assertEqual(log.request_payload.get("entityId"), self.student.apaar_id)
-        # Verify sensitive PAN and Token fields are masked in logs (Constitution P6)
-        self.assertEqual(log.request_payload.get("idValue"), "***")
-        self.assertEqual(log.request_payload.get("vcipToken"), "***")
+        # Verify sensitive Aadhaar and Token fields are logged in plain text (no masking)
+        self.assertEqual(log.request_payload.get("idValue"), "123456789012")
+        self.assertEqual(log.request_payload.get("vcipToken"), "TOKEN-TEST-5678")
 
     @patch('requests.post')
     def test_twa_client_sync_onboard_http_failure(self, mock_post):
@@ -300,28 +300,34 @@ class TWATestCase(TestCase):
         log = WebhookLog.objects.filter(direction='inbound').first()
         self.assertIsNotNone(log)
         
-        # Verify sensitive fields are masked in DB payload column (Constitution P6)
+        # Verify sensitive fields are NOT masked in DB payload column (no masking)
         logged_payload = log.payload
-        self.assertEqual(logged_payload.get("pan_number"), "***")
-        self.assertEqual(logged_payload.get("otp"), "***")
-        self.assertEqual(logged_payload.get("auth_token"), "***")
-        self.assertEqual(logged_payload.get("full_name"), "***")
+        self.assertEqual(logged_payload.get("pan_number"), "ABCDE1234F")
+        self.assertEqual(logged_payload.get("otp"), "999888")
+        self.assertEqual(logged_payload.get("auth_token"), "secret_token_123")
+        self.assertEqual(logged_payload.get("full_name"), "Vikesh Sharma TWA")
         
         # Non-sensitive fields should be unchanged
         self.assertEqual(logged_payload.get("tracking_id"), self.student.tracking_id)
         self.assertEqual(logged_payload.get("processing_status"), "PROCESSING")
 
     # 6. Integration Flow: Portal OTP Verify to TWA Sync
+    @patch('applications.aadhaar_client.AadhaarClient.aadhaar_verify_otp')
+    @patch('applications.aadhaar_client.AadhaarClient.name_match')
+    @patch('m2p.client.M2PClient.generate_otp')
     @patch('m2p.client.M2PClient.register_min_kyc')
     @patch('twa.client.TWAClient.sync_onboard')
-    def test_portal_otp_success_triggers_twa_sync(self, mock_twa_sync, mock_m2p_register):
-        """Verify that when a student completes MIN KYC in portal, it triggers outbound TWA onboard sync."""
-        # 1. Setup student for OTP verify stage (has PAN, has not locked OTP)
-        self.student.pan_number = "ABCDE1234F"
+    def test_portal_otp_success_triggers_twa_sync(self, mock_twa_sync, mock_m2p_register, mock_m2p_generate, mock_name_match, mock_verify_otp):
+        """Verify that when a student completes KYC in portal, it triggers outbound TWA onboard sync."""
+        self.student.aadhaar_number = "123456789012"
+        self.student.aadhaar_ref_id = "REF-MOCK-A1"
         self.student.otp_attempt_count = 0
         self.student.save()
 
-        # 2. Mock M2P success response
+        mock_verify_otp.return_value = {"status": "SUCCESS", "data": {"name": "Vikesh Sharma TWA"}}
+        mock_name_match.return_value = {"status": "SUCCESS", "data": {"score": 0.95}}
+        mock_m2p_generate.return_value = {"success": True}
+
         mock_m2p_register.return_value = {
             "success": True,
             "result": {
@@ -332,14 +338,11 @@ class TWATestCase(TestCase):
             }
         }
 
-        # 3. Mock TWA onboard sync success response
         mock_twa_sync.return_value = {
             "success": True,
             "message": "User sync succeeded"
         }
 
-        # Manually create the expected TWAApiLog row that the real TWAClient would have saved,
-        # since we are mocking sync_onboard.
         def mock_sync_side_effect(student):
             TWAApiLog.objects.create(
                 student=student,
@@ -355,17 +358,24 @@ class TWATestCase(TestCase):
             return {"success": True}
         mock_twa_sync.side_effect = mock_sync_side_effect
 
-        # 4. Perform OTP post in portal
-        url = reverse('portal:otp_verify', kwargs={'tracking_id': self.student.tracking_id})
-        response = self.client.post(url, data={'otp': '123456'})
+        # Step 1: Verify Aadhaar OTP (redirects to M2P OTP page)
+        verify_url = reverse('portal:aadhaar_verify_otp', kwargs={'tracking_id': self.student.tracking_id})
+        response = self.client.post(
+            verify_url,
+            data=json.dumps({'otp': '123456', 'ref_id': 'REF-MOCK-A1'}),
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["success"])
+        self.assertIn("/otp/", response.json()["redirect_url"])
 
-        # Verify redirect to Success page
+        # Step 2: Submit M2P OTP (completes registration and triggers TWA sync)
+        otp_url = reverse('portal:otp_verify', kwargs={'tracking_id': self.student.tracking_id})
+        response = self.client.post(otp_url, data={'otp': '999888'})
+        self.assertEqual(response.status_code, 302)
         self.assertRedirects(response, reverse('portal:success', kwargs={'tracking_id': self.student.tracking_id}))
 
-        # Verify TWA sync client was called
-        mock_twa_sync.assert_called_once_with(self.student)
-
-        # Verify that student record is marked as synced
+        mock_twa_sync.assert_called_once()
         self.student.refresh_from_db()
         self.assertTrue(self.student.twa_synced)
         self.assertEqual(self.student.kyc_status, "MIN_KYC")

@@ -282,9 +282,9 @@ class TAPTestCase(TestCase):
         self.assertEqual(data["kyc_status_counts"]["MIN_KYC"], 1)
         self.assertEqual(data["kyc_status_counts"]["FULL_KYC"], 1)
 
-    # 6. PII Masking Tests (Constitution P6)
+    # 6. PII Masking Disabled Tests (PII stored as plain text)
     def test_audit_logs_pii_masking(self):
-        """Test audit logs mask sensitive PII fields like student name, PAN, etc."""
+        """Test audit logs store sensitive PII fields in plain text (no masking)."""
         headers = self._generate_hmac_headers()
         self.client.post(
             reverse('issuer_bank:receive_application'),
@@ -295,8 +295,8 @@ class TAPTestCase(TestCase):
 
         log = ABCApiLog.objects.first()
         self.assertIsNotNone(log)
-        # Ensure name parameter is masked inside DB log JSON
-        self.assertEqual(log.request_payload.get("full_name"), "***")
+        # Ensure name parameter is NOT masked inside DB log JSON
+        self.assertEqual(log.request_payload.get("full_name"), "Vikesh Sharma")
 
     def test_nested_abc_submit_flattening(self):
         """Test pushing nested ABC_submit.json structured data is correctly flattened and saved."""

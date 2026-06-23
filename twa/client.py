@@ -61,26 +61,8 @@ class TWAClient:
             log.save() # ALWAYS save log row
 
     def _mask_payload(self, payload):
-        """Safely masks sensitive parameters (tokens, PAN numbers) in logging (Constitution P6)."""
-        if not isinstance(payload, dict):
-            return payload
-
-        masked = payload.copy()
-        if 'vcipToken' in masked:
-            masked['vcipToken'] = '***'
-        if 'idValue' in masked:
-            masked['idValue'] = '***'
-        if 'panInfo' in masked and isinstance(masked['panInfo'], dict):
-            pan_info_copy = masked['panInfo'].copy()
-            if 'pan_number' in pan_info_copy:
-                pan_info_copy['pan_number'] = '***'
-            masked['panInfo'] = pan_info_copy
-
-        for k in ('pan_number', 'm2p_token', 'token'):
-            if k in masked:
-                masked[k] = '***'
-
-        return masked
+        """Returns the payload unmasked (masking disabled as requested)."""
+        return payload
 
     def sync_onboard(self, student):
         """
@@ -144,10 +126,10 @@ class TWAClient:
                 "alias": "Home"
             },
             "kycStatus": "MIN_KYC",
-            "idType": "PAN",
-            "idValue": student.pan_number or "",
-            "panInfo": {
-                "pan_number": student.pan_number or "",
+            "idType": "AADHAAR",
+            "idValue": student.aadhaar_number or "",
+            "aadhaarInfo": {
+                "aadhaar_number": student.aadhaar_number or "",
                 "full_name": (student.full_name or "").upper()
             },
             "cards": [

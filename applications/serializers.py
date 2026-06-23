@@ -8,7 +8,7 @@ class StudentSerializer(serializers.ModelSerializer):
         # Exclude internal/system fields and m2p/twa responses from inbound serializing
         exclude = [
             'tracking_id',
-            'pan_number',
+            'aadhaar_number',
             'otp_attempt_count',
             'otp_locked',
             'application_status',
@@ -17,8 +17,9 @@ class StudentSerializer(serializers.ModelSerializer):
             'm2p_kit_no',
             'm2p_token',
             'twa_synced',
-            'pan_verified',
-            'pan_name_match_score',
+            'aadhaar_verified',
+            'aadhaar_name_match_score',
+            'aadhaar_ref_id',
             'created_at',
             'updated_at'
         ]

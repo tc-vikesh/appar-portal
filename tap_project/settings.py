@@ -148,8 +148,8 @@ TWA_WEBHOOK_ALLOWED_IPS = env.list('TWA_WEBHOOK_ALLOWED_IPS', default=['127.0.0.
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
-# Cashfree PAN Verification Security Settings
-PAN_API_URL = env('PAN_API_URL', default='https://sandbox.cashfree.com/verification/pan')
-PAN_CLIENT_ID = env('PAN_CLIENT_ID', default='')
-PAN_CLIENT_SECRET = env('PAN_CLIENT_SECRET', default='')
+# Cashfree Verification & Aadhaar Security Settings
+CASHFREE_BASE_URL = env('CASHFREE_BASE_URL', default='https://sandbox.cashfree.com/verification')
+CASHFREE_CLIENT_ID = env('CASHFREE_CLIENT_ID', default=env('PAN_CLIENT_ID', default=''))
+CASHFREE_CLIENT_SECRET = env('CASHFREE_CLIENT_SECRET', default=env('CASHFREE_SECRET_KEY', default=env('PAN_CLIENT_SECRET', default='')))
 
