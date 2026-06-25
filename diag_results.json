@@ -1,0 +1,387 @@
+{
+    "status": "completed",
+    "node_output": {
+        "body": "ywYcN8+gKPG77znDtXwqAJw8AprSIkVYWlDJhZHwtFSq9NY9yiAIek9HA9vvWvgXesWZSnRdGDgGSsVvGEjHw7cYLjDYZfyZSClkS/wBpqMghDX3ER3liisbpbuir2pu6be+k4RbVOYTyBhJIlHikSgcWub7MfmBwGZWRLkW0Hg=",
+        "key": "GyPtGZi/YKZOcTDiwrF6JxI3QfN5mvOkcnmMqgNdHQwVvbbtvdWdO0x3WNpQ+WkzMUDHWf3SQLybH81Bragpo3cRl/5Mzc4vr6FxF4IogINSdDiBEdtCuixlh/rN1RH+sm772P+8zZdjQ+gJCl2cLPQ/UMLmL0MCGIIlMUQ2kdJMxNdn5kK0NSZnJtp2BDNv9JRjOGAMUHsw39QrlcUtuWvxnfxxU82lxDz8gofteia1tWAn+goCES0fkzgWWLdqza+zk0lztB2oSEood0Xl1w70E1KSxnBeWbeREwWyDyvXFjivDiGlV2KehKOhswK5usIOCKGnWhFbt0Z4WX67Zw==",
+        "token": "dLMOyzjDaJB8IzylcfV0G9ICNz9MH7qW0jXCogznwWoCagUkwR5pLRnI3ZCBCdAO2YzB+GIuEB8bYVx9S/khXPsN86LS+47nlhwYwY4d49Y5iEIddGcKNMiQLlQd1AGTQHEbHl/QoqwhT2gvTZOVfDOrRk3Ysz3k55vu3gWxRJ0=",
+        "entity": "Gxo6b/hkV3A8vQ0ld070HiX1U4oHQ4EV8XMxx5isSvZyoWvSJVALBs9wXodgjl3WJnpTsj+57GH3vHVu6mQmR5U8JFQO5Gow19lh+oGjYcvPUeab4/HLI3wsAGUGeLjzW4xN/Zs1974icyuPdyV5C3sy0OST/jzOVc76RLfkiZqDnjIIKLjFWeoB4slc+2FGkC4+Jnfu3/Kr/g6AEdczqzdduEhhAlOF+q0+ijsGOIKBAHGqjSOnqnKPkSIwjq4llty1fTEoKuHrkJ2M0EkmFuP20B3P9fzjkSvpkG7T5WVEwR6kdhb1U5CCpawz9FGtURjNtir/S30SoNNibifTgQ==",
+        "refNo": "1234123412341279"
+    },
+    "python_output": {
+        "body": "ywYcN8+gKPG77znDtXwqAJw8AprSIkVYWlDJhZHwtFSq9NY9yiAIek9HA9vvWvgXesWZSnRdGDgGSsVvGEjHw7cYLjDYZfyZSClkS/wBpqMghDX3ER3liisbpbuir2pu6be+k4RbVOYTyBhJIlHikSgcWub7MfmBwGZWRLkW0Hg=",
+        "key": "TAdfTug3NuaeIuqKbPZbvVwbvGzG/0KaWsYuEfvj3QheMaOJXmcgTGyIM1/pAP2p6hEU0rMURDICVpGsGEsrH9CEogRFCG22KeA7wv0meSJxpkNNenKb4r33eVKlOHEClO/PDy0bEC4oCR/gDWhGYW19iE+ewmh4oGooJbse3Omt3JBJUjFmcKSOT7+drT4Wvq2Q/Pl9EdX0uoto/NTiXx6uyvFl+hq+QEetNHbo8hefn5qevXrJxswqTnG6wOjGr86Zn4AF3WnismvdZ8R/C/wh5Np10G1YcGZuaO4+3s+0jPyYJiTcBQCaVjOMDquKGSnDPSwA79J0zlwxit9NUQ==",
+        "token": "dLMOyzjDaJB8IzylcfV0G9ICNz9MH7qW0jXCogznwWoCagUkwR5pLRnI3ZCBCdAO2YzB+GIuEB8bYVx9S/khXPsN86LS+47nlhwYwY4d49Y5iEIddGcKNMiQLlQd1AGTQHEbHl/QoqwhT2gvTZOVfDOrRk3Ysz3k55vu3gWxRJ0=",
+        "entity": "fxGf+fMu67aHATGz7R3vs/AhGDwzQLHjh1+yWpmkQ9g7KQjc80ap8cUwlX/mLqAaCkWFnbMrQcTGy/FWmAnDR++3mScgBfdZgzxjLJZgJl6gTiPcFz1toKE4SHRM1yMOSUH+iSn4Iuhvd4V/vYgUlJfHeEfaTuKGNp/YZG0SMv/4A3cxXkmjGu5WesBjOyyvbSFlNPtrZK+9H8WImlcY/84bbYAZWTUFDKS1R/5PomKRQHmt/j6uNZCUMLq/IppeJbdZV+fU43Rjfcr+hGEk7APO9ofsdSuj5dTOMASXfsFRT3/2FYEtgEZGejQoHJ5oRaA27tayPuEGpgFbzUOafA==",
+        "refNo": "1234123412341279",
+        "sig_ok": true,
+        "sig_error": null
+    },
+    "comparisons": {
+        "aes_ciphertext_match": true,
+        "signature_match": true,
+        "node_signature_verified_by_python_pubkey": true,
+        "node_signature_error": null
+    },
+    "live_results": [
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/Yappay/kyc/customer/generate/otp | Payload: Payload_1_Standard_UAT_Plaintext_Format | Headers: Headers_Basic | Entity: TRANSCORP",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/Yappay/kyc/customer/generate/otp | Payload: Payload_1_Standard_UAT_Plaintext_Format | Headers: Headers_Basic | Entity: TRANSCORPMIN",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/Yappay/kyc/customer/generate/otp | Payload: Payload_1_Standard_UAT_Plaintext_Format | Headers: Headers_Basic | Entity: MSWIPE",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/Yappay/kyc/customer/generate/otp | Payload: Payload_1_Standard_UAT_Plaintext_Format | Headers: Headers_With_Partner_Auth | Entity: TRANSCORP",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/Yappay/kyc/customer/generate/otp | Payload: Payload_1_Standard_UAT_Plaintext_Format | Headers: Headers_With_Partner_Auth | Entity: TRANSCORPMIN",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/Yappay/kyc/customer/generate/otp | Payload: Payload_1_Standard_UAT_Plaintext_Format | Headers: Headers_With_Partner_Auth | Entity: MSWIPE",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/Yappay/kyc/customer/generate/otp | Payload: Payload_1_Standard_UAT_Plaintext_Format | Headers: Headers_With_Partner_And_Basic_Auth | Entity: TRANSCORP",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/Yappay/kyc/customer/generate/otp | Payload: Payload_1_Standard_UAT_Plaintext_Format | Headers: Headers_With_Partner_And_Basic_Auth | Entity: TRANSCORPMIN",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/Yappay/kyc/customer/generate/otp | Payload: Payload_1_Standard_UAT_Plaintext_Format | Headers: Headers_With_Partner_And_Basic_Auth | Entity: MSWIPE",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/Yappay/kyc/customer/generate/otp | Payload: Payload_2_Java_Mobile_Only | Headers: Headers_Basic | Entity: TRANSCORP",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/Yappay/kyc/customer/generate/otp | Payload: Payload_2_Java_Mobile_Only | Headers: Headers_Basic | Entity: TRANSCORPMIN",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/Yappay/kyc/customer/generate/otp | Payload: Payload_2_Java_Mobile_Only | Headers: Headers_Basic | Entity: MSWIPE",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/Yappay/kyc/customer/generate/otp | Payload: Payload_2_Java_Mobile_Only | Headers: Headers_With_Partner_Auth | Entity: TRANSCORP",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/Yappay/kyc/customer/generate/otp | Payload: Payload_2_Java_Mobile_Only | Headers: Headers_With_Partner_Auth | Entity: TRANSCORPMIN",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/Yappay/kyc/customer/generate/otp | Payload: Payload_2_Java_Mobile_Only | Headers: Headers_With_Partner_Auth | Entity: MSWIPE",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/Yappay/kyc/customer/generate/otp | Payload: Payload_2_Java_Mobile_Only | Headers: Headers_With_Partner_And_Basic_Auth | Entity: TRANSCORP",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/Yappay/kyc/customer/generate/otp | Payload: Payload_2_Java_Mobile_Only | Headers: Headers_With_Partner_And_Basic_Auth | Entity: TRANSCORPMIN",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/Yappay/kyc/customer/generate/otp | Payload: Payload_2_Java_Mobile_Only | Headers: Headers_With_Partner_And_Basic_Auth | Entity: MSWIPE",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/Yappay/kyc/customer/generate/otp | Payload: Payload_3_Java_Mobile_With_Country_Code | Headers: Headers_Basic | Entity: TRANSCORP",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/Yappay/kyc/customer/generate/otp | Payload: Payload_3_Java_Mobile_With_Country_Code | Headers: Headers_Basic | Entity: TRANSCORPMIN",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/Yappay/kyc/customer/generate/otp | Payload: Payload_3_Java_Mobile_With_Country_Code | Headers: Headers_Basic | Entity: MSWIPE",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/Yappay/kyc/customer/generate/otp | Payload: Payload_3_Java_Mobile_With_Country_Code | Headers: Headers_With_Partner_Auth | Entity: TRANSCORP",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/Yappay/kyc/customer/generate/otp | Payload: Payload_3_Java_Mobile_With_Country_Code | Headers: Headers_With_Partner_Auth | Entity: TRANSCORPMIN",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/Yappay/kyc/customer/generate/otp | Payload: Payload_3_Java_Mobile_With_Country_Code | Headers: Headers_With_Partner_Auth | Entity: MSWIPE",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/Yappay/kyc/customer/generate/otp | Payload: Payload_3_Java_Mobile_With_Country_Code | Headers: Headers_With_Partner_And_Basic_Auth | Entity: TRANSCORP",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/Yappay/kyc/customer/generate/otp | Payload: Payload_3_Java_Mobile_With_Country_Code | Headers: Headers_With_Partner_And_Basic_Auth | Entity: TRANSCORPMIN",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/Yappay/kyc/customer/generate/otp | Payload: Payload_3_Java_Mobile_With_Country_Code | Headers: Headers_With_Partner_And_Basic_Auth | Entity: MSWIPE",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/Yappay/kyc/customer/generate/otp | Payload: Payload_4_Apaar_ID_Only | Headers: Headers_Basic | Entity: TRANSCORP",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/Yappay/kyc/customer/generate/otp | Payload: Payload_4_Apaar_ID_Only | Headers: Headers_Basic | Entity: TRANSCORPMIN",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/Yappay/kyc/customer/generate/otp | Payload: Payload_4_Apaar_ID_Only | Headers: Headers_Basic | Entity: MSWIPE",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/Yappay/kyc/customer/generate/otp | Payload: Payload_4_Apaar_ID_Only | Headers: Headers_With_Partner_Auth | Entity: TRANSCORP",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/Yappay/kyc/customer/generate/otp | Payload: Payload_4_Apaar_ID_Only | Headers: Headers_With_Partner_Auth | Entity: TRANSCORPMIN",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/Yappay/kyc/customer/generate/otp | Payload: Payload_4_Apaar_ID_Only | Headers: Headers_With_Partner_Auth | Entity: MSWIPE",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/Yappay/kyc/customer/generate/otp | Payload: Payload_4_Apaar_ID_Only | Headers: Headers_With_Partner_And_Basic_Auth | Entity: TRANSCORP",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/Yappay/kyc/customer/generate/otp | Payload: Payload_4_Apaar_ID_Only | Headers: Headers_With_Partner_And_Basic_Auth | Entity: TRANSCORPMIN",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/Yappay/kyc/customer/generate/otp | Payload: Payload_4_Apaar_ID_Only | Headers: Headers_With_Partner_And_Basic_Auth | Entity: MSWIPE",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/kyc/customer/generate/otp | Payload: Payload_1_Standard_UAT_Plaintext_Format | Headers: Headers_Basic | Entity: TRANSCORP",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/kyc/customer/generate/otp | Payload: Payload_1_Standard_UAT_Plaintext_Format | Headers: Headers_Basic | Entity: TRANSCORPMIN",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/kyc/customer/generate/otp | Payload: Payload_1_Standard_UAT_Plaintext_Format | Headers: Headers_Basic | Entity: MSWIPE",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/kyc/customer/generate/otp | Payload: Payload_1_Standard_UAT_Plaintext_Format | Headers: Headers_With_Partner_Auth | Entity: TRANSCORP",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/kyc/customer/generate/otp | Payload: Payload_1_Standard_UAT_Plaintext_Format | Headers: Headers_With_Partner_Auth | Entity: TRANSCORPMIN",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/kyc/customer/generate/otp | Payload: Payload_1_Standard_UAT_Plaintext_Format | Headers: Headers_With_Partner_Auth | Entity: MSWIPE",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/kyc/customer/generate/otp | Payload: Payload_1_Standard_UAT_Plaintext_Format | Headers: Headers_With_Partner_And_Basic_Auth | Entity: TRANSCORP",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/kyc/customer/generate/otp | Payload: Payload_1_Standard_UAT_Plaintext_Format | Headers: Headers_With_Partner_And_Basic_Auth | Entity: TRANSCORPMIN",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/kyc/customer/generate/otp | Payload: Payload_1_Standard_UAT_Plaintext_Format | Headers: Headers_With_Partner_And_Basic_Auth | Entity: MSWIPE",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/kyc/customer/generate/otp | Payload: Payload_2_Java_Mobile_Only | Headers: Headers_Basic | Entity: TRANSCORP",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/kyc/customer/generate/otp | Payload: Payload_2_Java_Mobile_Only | Headers: Headers_Basic | Entity: TRANSCORPMIN",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/kyc/customer/generate/otp | Payload: Payload_2_Java_Mobile_Only | Headers: Headers_Basic | Entity: MSWIPE",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/kyc/customer/generate/otp | Payload: Payload_2_Java_Mobile_Only | Headers: Headers_With_Partner_Auth | Entity: TRANSCORP",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/kyc/customer/generate/otp | Payload: Payload_2_Java_Mobile_Only | Headers: Headers_With_Partner_Auth | Entity: TRANSCORPMIN",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/kyc/customer/generate/otp | Payload: Payload_2_Java_Mobile_Only | Headers: Headers_With_Partner_Auth | Entity: MSWIPE",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/kyc/customer/generate/otp | Payload: Payload_2_Java_Mobile_Only | Headers: Headers_With_Partner_And_Basic_Auth | Entity: TRANSCORP",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/kyc/customer/generate/otp | Payload: Payload_2_Java_Mobile_Only | Headers: Headers_With_Partner_And_Basic_Auth | Entity: TRANSCORPMIN",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/kyc/customer/generate/otp | Payload: Payload_2_Java_Mobile_Only | Headers: Headers_With_Partner_And_Basic_Auth | Entity: MSWIPE",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/kyc/customer/generate/otp | Payload: Payload_3_Java_Mobile_With_Country_Code | Headers: Headers_Basic | Entity: TRANSCORP",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/kyc/customer/generate/otp | Payload: Payload_3_Java_Mobile_With_Country_Code | Headers: Headers_Basic | Entity: TRANSCORPMIN",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/kyc/customer/generate/otp | Payload: Payload_3_Java_Mobile_With_Country_Code | Headers: Headers_Basic | Entity: MSWIPE",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/kyc/customer/generate/otp | Payload: Payload_3_Java_Mobile_With_Country_Code | Headers: Headers_With_Partner_Auth | Entity: TRANSCORP",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/kyc/customer/generate/otp | Payload: Payload_3_Java_Mobile_With_Country_Code | Headers: Headers_With_Partner_Auth | Entity: TRANSCORPMIN",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/kyc/customer/generate/otp | Payload: Payload_3_Java_Mobile_With_Country_Code | Headers: Headers_With_Partner_Auth | Entity: MSWIPE",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/kyc/customer/generate/otp | Payload: Payload_3_Java_Mobile_With_Country_Code | Headers: Headers_With_Partner_And_Basic_Auth | Entity: TRANSCORP",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/kyc/customer/generate/otp | Payload: Payload_3_Java_Mobile_With_Country_Code | Headers: Headers_With_Partner_And_Basic_Auth | Entity: TRANSCORPMIN",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/kyc/customer/generate/otp | Payload: Payload_3_Java_Mobile_With_Country_Code | Headers: Headers_With_Partner_And_Basic_Auth | Entity: MSWIPE",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/kyc/customer/generate/otp | Payload: Payload_4_Apaar_ID_Only | Headers: Headers_Basic | Entity: TRANSCORP",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/kyc/customer/generate/otp | Payload: Payload_4_Apaar_ID_Only | Headers: Headers_Basic | Entity: TRANSCORPMIN",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/kyc/customer/generate/otp | Payload: Payload_4_Apaar_ID_Only | Headers: Headers_Basic | Entity: MSWIPE",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/kyc/customer/generate/otp | Payload: Payload_4_Apaar_ID_Only | Headers: Headers_With_Partner_Auth | Entity: TRANSCORP",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/kyc/customer/generate/otp | Payload: Payload_4_Apaar_ID_Only | Headers: Headers_With_Partner_Auth | Entity: TRANSCORPMIN",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/kyc/customer/generate/otp | Payload: Payload_4_Apaar_ID_Only | Headers: Headers_With_Partner_Auth | Entity: MSWIPE",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/kyc/customer/generate/otp | Payload: Payload_4_Apaar_ID_Only | Headers: Headers_With_Partner_And_Basic_Auth | Entity: TRANSCORP",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/kyc/customer/generate/otp | Payload: Payload_4_Apaar_ID_Only | Headers: Headers_With_Partner_And_Basic_Auth | Entity: TRANSCORPMIN",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "OTP | URL: https://ssltest.yappay.in/kyc/customer/generate/otp | Payload: Payload_4_Apaar_ID_Only | Headers: Headers_With_Partner_And_Basic_Auth | Entity: MSWIPE",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "REGISTER | URL: https://ssltest.yappay.in/Yappay/kyc/v2/register | Headers: Headers_Basic | Entity: TRANSCORP",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "REGISTER | URL: https://ssltest.yappay.in/Yappay/kyc/v2/register | Headers: Headers_Basic | Entity: TRANSCORPMIN",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "REGISTER | URL: https://ssltest.yappay.in/Yappay/kyc/v2/register | Headers: Headers_Basic | Entity: MSWIPE",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "REGISTER | URL: https://ssltest.yappay.in/Yappay/kyc/v2/register | Headers: Headers_With_Partner_Auth | Entity: TRANSCORP",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "REGISTER | URL: https://ssltest.yappay.in/Yappay/kyc/v2/register | Headers: Headers_With_Partner_Auth | Entity: TRANSCORPMIN",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "REGISTER | URL: https://ssltest.yappay.in/Yappay/kyc/v2/register | Headers: Headers_With_Partner_Auth | Entity: MSWIPE",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "REGISTER | URL: https://ssltest.yappay.in/Yappay/kyc/v2/register | Headers: Headers_With_Partner_And_Basic_Auth | Entity: TRANSCORP",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "REGISTER | URL: https://ssltest.yappay.in/Yappay/kyc/v2/register | Headers: Headers_With_Partner_And_Basic_Auth | Entity: TRANSCORPMIN",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "REGISTER | URL: https://ssltest.yappay.in/Yappay/kyc/v2/register | Headers: Headers_With_Partner_And_Basic_Auth | Entity: MSWIPE",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "REGISTER | URL: https://ssltest.yappay.in/kyc/v2/register | Headers: Headers_Basic | Entity: TRANSCORP",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "REGISTER | URL: https://ssltest.yappay.in/kyc/v2/register | Headers: Headers_Basic | Entity: TRANSCORPMIN",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "REGISTER | URL: https://ssltest.yappay.in/kyc/v2/register | Headers: Headers_Basic | Entity: MSWIPE",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "REGISTER | URL: https://ssltest.yappay.in/kyc/v2/register | Headers: Headers_With_Partner_Auth | Entity: TRANSCORP",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "REGISTER | URL: https://ssltest.yappay.in/kyc/v2/register | Headers: Headers_With_Partner_Auth | Entity: TRANSCORPMIN",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "REGISTER | URL: https://ssltest.yappay.in/kyc/v2/register | Headers: Headers_With_Partner_Auth | Entity: MSWIPE",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "REGISTER | URL: https://ssltest.yappay.in/kyc/v2/register | Headers: Headers_With_Partner_And_Basic_Auth | Entity: TRANSCORP",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "REGISTER | URL: https://ssltest.yappay.in/kyc/v2/register | Headers: Headers_With_Partner_And_Basic_Auth | Entity: TRANSCORPMIN",
+            "error": "NameError: name 'settings' is not defined"
+        },
+        {
+            "test_case": "REGISTER | URL: https://ssltest.yappay.in/kyc/v2/register | Headers: Headers_With_Partner_And_Basic_Auth | Entity: MSWIPE",
+            "error": "NameError: name 'settings' is not defined"
+        }
+    ]
+}

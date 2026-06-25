@@ -111,7 +111,7 @@ class M2PCryptoHelper:
         )
         return base64.b64encode(signature_bytes).decode('utf-8')
 
-    def encrypt_request(self, plain_json_str: str) -> dict:
+    def encrypt_request(self, plain_json_str: str, entity_value: str = None) -> dict:
         """Encrypts request JSON payload and returns the M2P envelope format."""
         session_key = self.generate_random_16_digits()
         iv = self.generate_random_16_digits()
@@ -119,7 +119,9 @@ class M2PCryptoHelper:
         encrypted_body = self.aes_encrypt(plain_json_str, session_key, iv)
         encrypted_key = self.encrypt_key(session_key)
         token = self.sign_json(plain_json_str)
-        entity = self.encrypt_key(self.entity_key)
+        
+        target_entity = entity_value if entity_value else self.entity_key
+        entity = self.encrypt_key(target_entity)
         
         return {
             "body": encrypted_body,

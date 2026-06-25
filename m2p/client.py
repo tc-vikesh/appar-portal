@@ -27,7 +27,9 @@ class M2PClient:
             
             # Encrypt request payload
             plain_json_str = json.dumps(request_payload)
-            encrypted_payload = crypto.encrypt_request(plain_json_str)
+            # Pass the businessType as the entity envelope value to match M2P requirements
+            biz_type = request_payload.get("businessType", "TCAPAAR")
+            encrypted_payload = crypto.encrypt_request(plain_json_str, entity_value=biz_type)
             
             # Perform POST request with encrypted envelope
             response = requests.post(url, json=encrypted_payload, headers=headers, timeout=15)
