@@ -134,7 +134,7 @@ class TWAClient:
             },
             "cards": [
                 {
-                    "kitNumber": kit_number,
+                    "kitNumber": str(kit_number),
                     "cardType": "VIRTUAL",
                     "networkType": "RUPAY"
                 }

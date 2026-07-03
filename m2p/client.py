@@ -186,7 +186,7 @@ class M2PClient:
             ],
             "kycInfo": [
                 {
-                    "documentType": "AADHAAR",
+                    "documentType": "AADHAARREF",
                     "documentNo": aadhaar_number,
                     "documentExpiry": "2099-03-01"
                 }
