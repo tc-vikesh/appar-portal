@@ -127,6 +127,7 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
+STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field
@@ -162,7 +163,7 @@ M2P_ENTITY_KEY = env('M2P_ENTITY_KEY', default='TRANSCORP')
 
 # Configure M2P Base URL based on encryption settings
 if M2P_ENCRYPTION_ENABLED:
-    M2P_BASE_URL = env('M2P_BASE_URL', default='https://ssltest.yappay.in/Yappay')
+    M2P_BASE_URL = env('M2P_BASE_URL', default='https://ssltest.yappay.in')
 else:
     M2P_BASE_URL = env('M2P_BASE_URL', default='https://kycuat.yappay.in')
 M2P_TENANT = env('M2P_TENANT', default='TRANSCORP')
