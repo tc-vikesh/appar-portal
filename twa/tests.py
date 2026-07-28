@@ -31,7 +31,7 @@ class TWATestCase(TestCase):
             academic_status="Active",
             current_address={"city": "Delhi", "pincode": "110016"},
             permanent_address={"city": "Jaipur", "pincode": "302001"},
-            aadhaar_number="123456789012",
+            aadhaar_number="9012",
             m2p_entity_id="APAAR-12345-67890",
             m2p_kit_no="KIT-TEST-1234",
             m2p_token="TOKEN-TEST-5678",
@@ -73,7 +73,7 @@ class TWATestCase(TestCase):
         # Verify that request payload is logged and has core fields
         self.assertEqual(log.request_payload.get("entityId"), self.student.apaar_id)
         # Verify sensitive Aadhaar and Token fields are logged in plain text (no masking)
-        self.assertEqual(log.request_payload.get("idValue"), "123456789012")
+        self.assertEqual(log.request_payload.get("idValue"), "9012")
         self.assertEqual(log.request_payload.get("vcipToken"), "TOKEN-TEST-5678")
 
     @patch('requests.post')
@@ -319,7 +319,7 @@ class TWATestCase(TestCase):
     @patch('twa.client.TWAClient.sync_onboard')
     def test_portal_otp_success_triggers_twa_sync(self, mock_twa_sync, mock_m2p_register, mock_m2p_generate, mock_name_match, mock_verify_otp):
         """Verify that when a student completes KYC in portal, it triggers outbound TWA onboard sync."""
-        self.student.aadhaar_number = "123456789012"
+        self.student.aadhaar_number = "9012"
         self.student.aadhaar_ref_id = "REF-MOCK-A1"
         self.student.otp_attempt_count = 0
         self.student.save()

@@ -92,17 +92,14 @@ class TWAClient:
         state = student.permanent_address_state or "Maharashtra"
         pincode = student.permanent_address_pincode or "400001"
 
-        # Kit number parsing to int if numeric
-        import re
-        kit_number = 0
-        if student.m2p_kit_no:
-            try:
-                kit_number = int(student.m2p_kit_no)
-            except (ValueError, TypeError):
-                try:
-                    kit_number = int(re.sub(r'\D', '', student.m2p_kit_no))
-                except (ValueError, TypeError):
-                    kit_number = 0
+        # Kit number parsing is no longer needed since kitNumber is passed as a string directly
+
+        # Safely extract last 4 digits of Aadhaar
+        aadhaar_last_4 = ""
+        if student.aadhaar_number and len(student.aadhaar_number) >= 4:
+            aadhaar_last_4 = student.aadhaar_number[-4:]
+        elif student.aadhaar_number:
+            aadhaar_last_4 = student.aadhaar_number
 
         payload = {
             "firstName": first_name,
@@ -110,31 +107,31 @@ class TWAClient:
             "email": student.email,
             "dob": str(student.dob) if student.dob else "2000-01-01",
             "gender": student.gender or "M",
-            "identifier": f"+91{student.mobile}",
-            "status": "ACTIVATED",
+            "identifier": student.mobile,
+            "status": student.kyc_status,
             "accountIdentifierType": "phone",
-            "programName": "TRANSCORPMIN",
+            "programName": "TCAPAAR",
             "entityId": student.m2p_entity_id or student.apaar_id,
             "vcipToken": student.m2p_token or "",
+            "apaarId": student.apaar_id,
             "permanentAddress": {
                 "address1": address1,
                 "address2": address2,
                 "city": city,
                 "state": str(state).upper(),
-                "country": "INDIA",
-                "pincode": str(pincode),
-                "alias": "Home"
+                "country": "India",
+                "pincode": str(pincode)
             },
-            "kycStatus": "MIN_KYC",
-            "idType": "AADHAAR",
-            "idValue": student.aadhaar_number or "",
+            "kycStatus": student.kyc_status,
+            "idType": "AADHAARREF",
+            "idValue": aadhaar_last_4,
             "aadhaarInfo": {
-                "aadhaar_number": student.aadhaar_number or "",
+                "aadhaar_number": aadhaar_last_4,
                 "full_name": (student.full_name or "").upper()
             },
             "cards": [
                 {
-                    "kitNumber": str(kit_number),
+                    "kitNumber": student.m2p_kit_no or "",
                     "cardType": "VIRTUAL",
                     "networkType": "RUPAY"
                 }

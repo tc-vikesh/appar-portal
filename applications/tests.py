@@ -1,5 +1,6 @@
 import hashlib
 import time
+import json
 import uuid
 from django.test import TestCase
 from django.urls import reverse
@@ -17,6 +18,11 @@ class TAPTestCase(TestCase):
         self.client_secret = "test_abc_client_secret"
         settings.ABC_CLIENT_ID = self.client_id
         settings.ABC_CLIENT_SECRET = self.client_secret
+        
+        import base64
+        import os
+        self.encryption_key = base64.b64encode(os.urandom(32)).decode('utf-8')
+        settings.ABC_ENCRYPTION_KEY = self.encryption_key
 
         # Valid payload representing standard ABC student data push
         self.student_data = {
@@ -44,7 +50,8 @@ class TAPTestCase(TestCase):
                 "city": "Jaipur",
                 "pincode": "302001"
             },
-            "photo_path": "/photos/vikesh.jpg"
+            "photo_path": "/photos/vikesh.jpg",
+            "APPLICATION_REFERENCE_NUMBER": "TAP-123456789"
         }
 
     def _generate_hmac_headers(self, timestamp=None, secret=None, client_id=None):
@@ -53,9 +60,10 @@ class TAPTestCase(TestCase):
         sec = secret or self.client_secret
         cid = client_id or self.client_id
 
-        # Calculate signature: SHA256(secret + id + timestamp)
-        message = f"{sec}{cid}{ts}"
-        signature = hashlib.sha256(message.encode('utf-8')).hexdigest()
+        # Calculate signature: HMAC-SHA256(secret, id:timestamp)
+        import hmac
+        message = f"{cid}:{ts}"
+        signature = hmac.new(sec.encode('utf-8'), message.encode('utf-8'), hashlib.sha256).hexdigest()
 
         return {
             "HTTP_X_CLIENT_ID": cid,
@@ -63,13 +71,17 @@ class TAPTestCase(TestCase):
             "HTTP_X_CLIENT_HMAC": signature
         }
 
+    def _encrypt(self, payload):
+        from applications.crypto import encrypt_abc_payload
+        return encrypt_abc_payload(payload)
+
     # 1. HMAC Authentication Tests
     def test_hmac_authentication_success(self):
         """Test accessing endpoint with completely valid HMAC headers."""
         headers = self._generate_hmac_headers()
         response = self.client.post(
             reverse('issuer_bank:receive_application'),
-            data=self.student_data,
+            data=self._encrypt(self.student_data),
             content_type='application/json',
             **headers
         )
@@ -79,7 +91,7 @@ class TAPTestCase(TestCase):
         """Test accessing endpoint with missing HMAC headers (returns 403 / AuthenticationFailed)."""
         response = self.client.post(
             reverse('issuer_bank:receive_application'),
-            data=self.student_data,
+            data=self._encrypt(self.student_data),
             content_type='application/json'
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
@@ -95,7 +107,7 @@ class TAPTestCase(TestCase):
         headers = self._generate_hmac_headers(client_id="bad_client")
         response = self.client.post(
             reverse('issuer_bank:receive_application'),
-            data=self.student_data,
+            data=self._encrypt(self.student_data),
             content_type='application/json',
             **headers
         )
@@ -107,7 +119,7 @@ class TAPTestCase(TestCase):
         headers = self._generate_hmac_headers(timestamp=expired_ts)
         response = self.client.post(
             reverse('issuer_bank:receive_application'),
-            data=self.student_data,
+            data=self._encrypt(self.student_data),
             content_type='application/json',
             **headers
         )
@@ -119,7 +131,7 @@ class TAPTestCase(TestCase):
         headers["HTTP_X_CLIENT_HMAC"] = "invalid_signature_hex"
         response = self.client.post(
             reverse('issuer_bank:receive_application'),
-            data=self.student_data,
+            data=self._encrypt(self.student_data),
             content_type='application/json',
             **headers
         )
@@ -135,7 +147,7 @@ class TAPTestCase(TestCase):
         bad_student["mobile"] = "12345"
         response = self.client.post(
             reverse('issuer_bank:receive_application'),
-            data=bad_student,
+            data=self._encrypt(bad_student),
             content_type='application/json',
             **headers
         )
@@ -147,7 +159,7 @@ class TAPTestCase(TestCase):
         bad_student2["current_address"] = {"line": "St", "city": "D", "pincode": "123"}
         response = self.client.post(
             reverse('issuer_bank:receive_application'),
-            data=bad_student2,
+            data=self._encrypt(bad_student2),
             content_type='application/json',
             **headers
         )
@@ -161,7 +173,7 @@ class TAPTestCase(TestCase):
         # First request
         response1 = self.client.post(
             reverse('issuer_bank:receive_application'),
-            data=self.student_data,
+            data=self._encrypt(self.student_data),
             content_type='application/json',
             **headers
         )
@@ -172,7 +184,7 @@ class TAPTestCase(TestCase):
         # Second request (exact same student data)
         response2 = self.client.post(
             reverse('issuer_bank:receive_application'),
-            data=self.student_data,
+            data=self._encrypt(self.student_data),
             content_type='application/json',
             **headers
         )
@@ -192,7 +204,7 @@ class TAPTestCase(TestCase):
         headers = self._generate_hmac_headers()
         response1 = self.client.post(
             reverse('issuer_bank:receive_application'),
-            data=self.student_data,
+            data=self._encrypt(self.student_data),
             content_type='application/json',
             **headers
         )
@@ -206,7 +218,7 @@ class TAPTestCase(TestCase):
         headers_ack = self._generate_hmac_headers()
         response2 = self.client.post(
             reverse('issuer_bank:acknowledge_application'),
-            data={"tracking_id": tracking_id},
+            data=self._encrypt({"tracking_id": tracking_id}),
             content_type='application/json',
             **headers_ack
         )
@@ -224,7 +236,7 @@ class TAPTestCase(TestCase):
         # Create student record
         response1 = self.client.post(
             reverse('issuer_bank:receive_application'),
-            data=self.student_data,
+            data=self._encrypt(self.student_data),
             content_type='application/json',
             **headers
         )
@@ -232,8 +244,11 @@ class TAPTestCase(TestCase):
 
         # Request status
         headers_status = self._generate_hmac_headers()
-        response2 = self.client.get(
+        response2 = self.client.generic(
+            'GET',
             reverse('issuer_bank:application_status', kwargs={"tracking_id": tracking_id}),
+            data=json.dumps(self._encrypt({"TRACKING_ID": tracking_id})),
+            content_type='application/json',
             **headers_status
         )
         self.assertEqual(response2.status_code, status.HTTP_200_OK)
@@ -288,7 +303,7 @@ class TAPTestCase(TestCase):
         headers = self._generate_hmac_headers()
         self.client.post(
             reverse('issuer_bank:receive_application'),
-            data=self.student_data,
+            data=self._encrypt(self.student_data),
             content_type='application/json',
             **headers
         )
@@ -296,7 +311,8 @@ class TAPTestCase(TestCase):
         log = ABCApiLog.objects.first()
         self.assertIsNotNone(log)
         # Ensure name parameter is NOT masked inside DB log JSON
-        self.assertEqual(log.request_payload.get("full_name"), "Vikesh Sharma")
+        from applications.crypto import decrypt_abc_payload
+        self.assertEqual(decrypt_abc_payload(log.request_payload.get("encryptedData")).get("full_name"), "Vikesh Sharma")
 
     def test_nested_abc_submit_flattening(self):
         """Test pushing nested ABC_submit.json structured data is correctly flattened and saved."""
@@ -343,13 +359,14 @@ class TAPTestCase(TestCase):
             },
             "APPLICATION_META": {
                 "STATUS": "SUBMITTED"
-            }
+            },
+            "APPLICATION_REFERENCE_NUMBER": "APAAR-NESTED-9988-REF"
         }
 
         headers = self._generate_hmac_headers()
         response = self.client.post(
             reverse('issuer_bank:receive_application'),
-            data=nested_payload,
+            data=self._encrypt(nested_payload),
             content_type='application/json',
             **headers
         )

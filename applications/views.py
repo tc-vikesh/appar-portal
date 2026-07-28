@@ -195,6 +195,7 @@ def flatten_abc_data(data):
     if 'APAAR_ID' in data or 'PERSONAL_INFO' in data:
         flat = {}
         flat['apaar_id'] = data.get('APAAR_ID')
+        flat['application_reference_number'] = data.get('APPLICATION_REFERENCE_NUMBER')
         
         personal = data.get('PERSONAL_INFO') or {}
         flat['full_name'] = personal.get('FULL_NAME')
@@ -263,8 +264,15 @@ class ReceiveApplicationView(LoggingAPIView):
     Per Constitution P2, this endpoint is strictly idempotent on apaar_id.
     """
     def post(self, request, *args, **kwargs):
-        # Flatten nested structured ABC data if present (backward compatible)
         data = request.data
+        if isinstance(data, dict) and 'encryptedData' in data:
+            from applications.crypto import decrypt_abc_payload
+            try:
+                data = decrypt_abc_payload(data['encryptedData'])
+            except Exception as e:
+                return Response({"error": f"Decryption failed: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Flatten nested structured ABC data if present (backward compatible)
         if isinstance(data, dict) and ('APAAR_ID' in data or 'PERSONAL_INFO' in data):
             data = flatten_abc_data(data)
 
@@ -289,8 +297,10 @@ class ReceiveApplicationView(LoggingAPIView):
 
         serializer = StudentSerializer(data=data)
         if serializer.is_valid():
-            # Generate a clean, unique tracking_id
-            tracking_id = f"TAP-{uuid.uuid4().hex[:12].upper()}"
+            # Use APPLICATION_REFERENCE_NUMBER as tracking_id
+            tracking_id = data.get('application_reference_number') or data.get('APPLICATION_REFERENCE_NUMBER')
+            if not tracking_id:
+                return Response({"error": "APPLICATION_REFERENCE_NUMBER is required."}, status=status.HTTP_400_BAD_REQUEST)
 
             # Save student record
             student = serializer.save(
@@ -314,8 +324,16 @@ class AcknowledgeApplicationView(LoggingAPIView):
     Confirms receipt of tracking ID and transitions status to PROCESSING.
     """
     def post(self, request, *args, **kwargs):
-        tracking_id = request.data.get('tracking_id')
-        apaar_id = request.data.get('apaar_id')
+        data = request.data
+        if isinstance(data, dict) and 'encryptedData' in data:
+            from applications.crypto import decrypt_abc_payload
+            try:
+                data = decrypt_abc_payload(data['encryptedData'])
+            except Exception as e:
+                return Response({"error": f"Decryption failed: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        tracking_id = data.get('tracking_id') or data.get('TRACKING_ID')
+        apaar_id = data.get('apaar_id') or data.get('APAAR_ID')
 
         if not tracking_id and not apaar_id:
             return Response(
@@ -352,6 +370,26 @@ class ApplicationStatusView(LoggingAPIView):
     Pulls status from TWA client first, updates record, and returns status.
     """
     def get(self, request, tracking_id, *args, **kwargs):
+        # Body decryption for GET
+        data = request.data
+        if not data and request.body:
+            import json
+            try:
+                data = json.loads(request.body)
+            except Exception:
+                data = {}
+                
+        if isinstance(data, dict) and 'encryptedData' in data:
+            from applications.crypto import decrypt_abc_payload
+            try:
+                data = decrypt_abc_payload(data['encryptedData'])
+            except Exception as e:
+                return Response({"error": f"Decryption failed: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        body_tracking_id = data.get('tracking_id') or data.get('TRACKING_ID') if isinstance(data, dict) else None
+        if body_tracking_id and body_tracking_id != tracking_id:
+            return Response({"error": "Tracking ID in path and body do not match."}, status=status.HTTP_400_BAD_REQUEST)
+
         student = get_object_or_404(Student, tracking_id=tracking_id)
 
         # Per Spec, pull latest status from TWA first

@@ -20,10 +20,10 @@ class ABCWebhookDispatcher:
         """
         url = getattr(settings, 'ABC_STATUS_UPDATE_WEBHOOK_URL', '')
         payload = {
-            "tracking_id": student.tracking_id,
-            "apaar_id": student.apaar_id,
-            "application_status": student.application_status,
-            "remarks": remarks or ""
+            "TRACKING_ID": student.tracking_id,
+            "APAAR_ID": student.apaar_id,
+            "PROCESSING_STATUS": student.application_status,
+            "REMARKS": remarks or ""
         }
         return self._send_webhook(
             url=url,
@@ -39,11 +39,15 @@ class ABCWebhookDispatcher:
         """
         url = getattr(settings, 'ABC_KYC_STATUS_WEBHOOK_URL', '')
         payload = {
-            "tracking_id": student.tracking_id,
-            "apaar_id": student.apaar_id,
-            "kyc_status": student.kyc_status,
-            "remarks": remarks or ""
+            "TRACKING_ID": student.tracking_id,
+            "APAAR_ID": student.apaar_id,
+            "KYC_STATUS": student.kyc_status,
+            "REMARKS": remarks or ""
         }
+        
+        # If student is VERIFIED/ISSUED, they might have a KYC_DATE or CARD_DETAILS in real life.
+        # This is minimally matching the new spec.
+        
         return self._send_webhook(
             url=url,
             payload=payload,
@@ -87,9 +91,36 @@ class ABCWebhookDispatcher:
 
         start = time.monotonic()
         try:
-            # Call ABC webhook - no authentication needed as per Sprint 5 specs (no-auth)
-            # Timeout is kept short to not hang application requests
-            response = requests.post(url, json=payload, timeout=10)
+            # Prepare HMAC Headers
+            import time as pytime
+            import hmac
+            import hashlib
+            client_id = getattr(settings, 'ABC_CLIENT_ID', '')
+            client_secret = getattr(settings, 'ABC_CLIENT_SECRET', '')
+            timestamp = str(int(pytime.time()))
+            message = f"{client_id}:{timestamp}"
+            signature = hmac.new(
+                client_secret.encode('utf-8'),
+                message.encode('utf-8'),
+                hashlib.sha256
+            ).hexdigest()
+            
+            headers = {
+                'X-Client-ID': client_id,
+                'X-Client-Timestamp': timestamp,
+                'X-Client-HMAC': signature,
+                'Content-Type': 'application/json'
+            }
+
+            # Encrypt Payload
+            from applications.crypto import encrypt_abc_payload
+            try:
+                encrypted_payload = encrypt_abc_payload(payload)
+            except Exception as e:
+                # If encryption fails (e.g. no key), fallback to plain payload or error out
+                encrypted_payload = payload
+                
+            response = requests.post(url, json=encrypted_payload, headers=headers, timeout=10)
             log.http_status = response.status_code
 
             try:

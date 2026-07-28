@@ -137,6 +137,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # ABC Integration Security Settings
 ABC_CLIENT_ID = env('ABC_CLIENT_ID', default='')
 ABC_CLIENT_SECRET = env('ABC_CLIENT_SECRET', default='')
+ABC_ENCRYPTION_KEY = env('ABC_ENCRYPTION_KEY', default='')
 ABC_STATUS_UPDATE_WEBHOOK_URL = env('ABC_STATUS_UPDATE_WEBHOOK_URL', default='')
 ABC_KYC_STATUS_WEBHOOK_URL = env('ABC_KYC_STATUS_WEBHOOK_URL', default='')
 
@@ -153,4 +154,11 @@ MEDIA_ROOT = BASE_DIR / 'media'
 CASHFREE_BASE_URL = env('CASHFREE_BASE_URL', default='https://sandbox.cashfree.com/verification')
 CASHFREE_CLIENT_ID = env('CASHFREE_CLIENT_ID', default=env('PAN_CLIENT_ID', default=''))
 CASHFREE_CLIENT_SECRET = env('CASHFREE_CLIENT_SECRET', default=env('CASHFREE_SECRET_KEY', default=env('PAN_CLIENT_SECRET', default='')))
+
+CSRF_TRUSTED_ORIGINS = env.list(
+    "CSRF_TRUSTED_ORIGINS",
+    default=[]
+)
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+USE_X_FORWARDED_HOST = True
 

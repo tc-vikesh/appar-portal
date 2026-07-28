@@ -42,6 +42,9 @@ class WebhookDispatcherTestCase(TestCase):
         )
 
         # Standard settings for outbound webhook
+        
+        import base64, os
+        settings.ABC_ENCRYPTION_KEY = base64.b64encode(os.urandom(32)).decode('utf-8')
         settings.ABC_CLIENT_ID = "mock_abc_client_id_tap"
         settings.ABC_CLIENT_SECRET = "mock_abc_client_secret_hmac_sha256"
         settings.ABC_STATUS_UPDATE_WEBHOOK_URL = "http://localhost:8001/webhook/abc/application/status/update"
@@ -71,10 +74,11 @@ class WebhookDispatcherTestCase(TestCase):
         # Verify no auth header is sent (no-auth UAT specs)
         self.assertNotIn("Authorization", kwargs.get("headers", {}))
         
-        payload = kwargs.get("json", {})
-        self.assertEqual(payload.get("tracking_id"), self.student.tracking_id)
-        self.assertEqual(payload.get("application_status"), self.student.application_status)
-        self.assertEqual(payload.get("remarks"), "Remarks text")
+        from applications.crypto import decrypt_abc_payload
+        payload = decrypt_abc_payload(kwargs.get("json", {}).get("encryptedData"))
+        self.assertEqual(payload.get("TRACKING_ID"), self.student.tracking_id)
+        self.assertEqual(payload.get("PROCESSING_STATUS"), self.student.application_status)
+        self.assertEqual(payload.get("REMARKS"), "Remarks text")
 
         # Verify exactly one WebhookLog outbound row is written (Constitution P1)
         log = WebhookLog.objects.filter(direction='outbound').first()
@@ -273,8 +277,9 @@ class WebhookDispatcherTestCase(TestCase):
         client_id = "mock_abc_client_id_tap"
         client_secret = "mock_abc_client_secret_hmac_sha256"
         timestamp = str(int(time.time()))
-        message = client_secret + client_id + timestamp
-        signature = hashlib.sha256(message.encode('utf-8')).hexdigest()
+        import hmac
+        message = f"{client_id}:{timestamp}"
+        signature = hmac.new(client_secret.encode('utf-8'), message.encode('utf-8'), hashlib.sha256).hexdigest()
 
         # Call acknowledge
         url = reverse('issuer_bank:acknowledge_application')
