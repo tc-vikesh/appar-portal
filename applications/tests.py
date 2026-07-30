@@ -312,7 +312,8 @@ class TAPTestCase(TestCase):
         self.assertIsNotNone(log)
         # Ensure name parameter is NOT masked inside DB log JSON
         from applications.crypto import decrypt_abc_payload
-        self.assertEqual(decrypt_abc_payload(log.request_payload.get("encryptedData")).get("full_name"), "Vikesh Sharma")
+        self.assertEqual(log.request_payload.get("full_name"), "Vikesh Sharma")
+        self.assertEqual(decrypt_abc_payload(log.encrypted_request_payload.get("encryptedData")).get("full_name"), "Vikesh Sharma")
 
     def test_nested_abc_submit_flattening(self):
         """Test pushing nested ABC_submit.json structured data is correctly flattened and saved."""

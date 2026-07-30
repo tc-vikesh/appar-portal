@@ -116,6 +116,7 @@ class ABCWebhookDispatcher:
             from applications.crypto import encrypt_abc_payload
             try:
                 encrypted_payload = encrypt_abc_payload(payload)
+                log.encrypted_payload = make_json_safe(encrypted_payload)
             except Exception as e:
                 # If encryption fails (e.g. no key), fallback to plain payload or error out
                 encrypted_payload = payload

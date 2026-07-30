@@ -27,6 +27,7 @@ class WebhookLog(models.Model):
     direction = models.CharField(max_length=10, choices=DIRECTION_CHOICES)
     endpoint = models.CharField(max_length=500)
     payload = models.JSONField(null=True, blank=True)
+    encrypted_payload = models.JSONField(null=True, blank=True)
     source_ip = models.CharField(max_length=45, null=True, blank=True) # inbound only
     ip_whitelisted = models.BooleanField(null=True, blank=True) # inbound only
     http_status = models.SmallIntegerField(null=True, blank=True)

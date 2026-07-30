@@ -106,7 +106,11 @@ class LoggingAPIView(APIView):
                     pass
 
             # PII Discipline: Masking disabled as requested
-            log.request_payload = make_json_safe(payload)
+            if hasattr(drf_request, '_decrypted_data'):
+                log.request_payload = make_json_safe(drf_request._decrypted_data)
+                log.encrypted_request_payload = make_json_safe(payload)
+            else:
+                log.request_payload = make_json_safe(payload)
             log.response_payload = make_json_safe(response_body)
             log.http_status = http_status_code
             log.success = success
@@ -269,6 +273,7 @@ class ReceiveApplicationView(LoggingAPIView):
             from applications.crypto import decrypt_abc_payload
             try:
                 data = decrypt_abc_payload(data['encryptedData'])
+                request._decrypted_data = data
             except Exception as e:
                 return Response({"error": f"Decryption failed: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -329,6 +334,7 @@ class AcknowledgeApplicationView(LoggingAPIView):
             from applications.crypto import decrypt_abc_payload
             try:
                 data = decrypt_abc_payload(data['encryptedData'])
+                request._decrypted_data = data
             except Exception as e:
                 return Response({"error": f"Decryption failed: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
         
@@ -383,6 +389,7 @@ class ApplicationStatusView(LoggingAPIView):
             from applications.crypto import decrypt_abc_payload
             try:
                 data = decrypt_abc_payload(data['encryptedData'])
+                request._decrypted_data = data
             except Exception as e:
                 return Response({"error": f"Decryption failed: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
         
