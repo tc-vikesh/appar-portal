@@ -107,8 +107,8 @@ class TWAClient:
             "email": student.email,
             "dob": str(student.dob) if student.dob else "2000-01-01",
             "gender": student.gender or "M",
-            "identifier": student.mobile,
-            "status": student.kyc_status,
+            "identifier": "+91" + student.mobile,
+            "status": "ACTIVATED",
             "accountIdentifierType": "phone",
             "programName": "TCAPAAR",
             "entityId": student.m2p_entity_id or student.apaar_id,
@@ -123,7 +123,7 @@ class TWAClient:
                 "pincode": str(pincode)
             },
             "kycStatus": student.kyc_status,
-            "idType": "AADHAARREF",
+            "idType": "AADHAAR",
             "idValue": aadhaar_last_4,
             "aadhaarInfo": {
                 "aadhaar_number": aadhaar_last_4,

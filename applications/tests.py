@@ -60,10 +60,9 @@ class TAPTestCase(TestCase):
         sec = secret or self.client_secret
         cid = client_id or self.client_id
 
-        # Calculate signature: HMAC-SHA256(secret, id:timestamp)
-        import hmac
-        message = f"{cid}:{ts}"
-        signature = hmac.new(sec.encode('utf-8'), message.encode('utf-8'), hashlib.sha256).hexdigest()
+        # Calculate signature: SHA256(secret + id + timestamp)
+        message = f"{sec}{cid}{ts}"
+        signature = hashlib.sha256(message.encode('utf-8')).hexdigest()
 
         return {
             "HTTP_X_CLIENT_ID": cid,

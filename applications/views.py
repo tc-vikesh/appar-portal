@@ -86,6 +86,17 @@ class LoggingAPIView(APIView):
             else:
                 response_body = {'_raw_content': str(response.content)[:1000]}
 
+            # If request was encrypted, ABC expects the response to be encrypted too
+            drf_request = getattr(self, 'request', None)
+            if hasattr(drf_request, '_decrypted_data') and isinstance(response_body, dict):
+                from applications.crypto import encrypt_abc_payload
+                try:
+                    encrypted = encrypt_abc_payload(response_body)
+                    response._encrypted_response = encrypted
+                    response.data = encrypted
+                except Exception:
+                    pass
+
             return response
 
         except Exception as e:
@@ -105,13 +116,21 @@ class LoggingAPIView(APIView):
                 except Exception:
                     pass
 
-            # PII Discipline: Masking disabled as requested
-            if hasattr(drf_request, '_decrypted_data'):
-                log.request_payload = make_json_safe(drf_request._decrypted_data)
+            # Check if payload contains encryptedData even if decryption failed or hasn't happened
+            if isinstance(payload, dict) and 'encryptedData' in payload:
                 log.encrypted_request_payload = make_json_safe(payload)
+                if hasattr(drf_request, '_decrypted_data'):
+                    log.request_payload = make_json_safe(drf_request._decrypted_data)
+                else:
+                    log.request_payload = None # Decryption failed, we don't have plaintext
             else:
                 log.request_payload = make_json_safe(payload)
+                
             log.response_payload = make_json_safe(response_body)
+            if hasattr(response_body, '_encrypted_response') or hasattr(response, '_encrypted_response'):
+                enc_resp = getattr(response, '_encrypted_response', None)
+                if enc_resp:
+                    log.encrypted_response_payload = make_json_safe(enc_resp)
             log.http_status = http_status_code
             log.success = success
 

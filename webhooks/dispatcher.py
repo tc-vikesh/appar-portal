@@ -98,12 +98,8 @@ class ABCWebhookDispatcher:
             client_id = getattr(settings, 'ABC_CLIENT_ID', '')
             client_secret = getattr(settings, 'ABC_CLIENT_SECRET', '')
             timestamp = str(int(pytime.time()))
-            message = f"{client_id}:{timestamp}"
-            signature = hmac.new(
-                client_secret.encode('utf-8'),
-                message.encode('utf-8'),
-                hashlib.sha256
-            ).hexdigest()
+            message = f"{client_secret}{client_id}{timestamp}"
+            signature = hashlib.sha256(message.encode('utf-8')).hexdigest()
             
             headers = {
                 'X-Client-ID': client_id,

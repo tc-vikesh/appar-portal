@@ -277,9 +277,8 @@ class WebhookDispatcherTestCase(TestCase):
         client_id = "mock_abc_client_id_tap"
         client_secret = "mock_abc_client_secret_hmac_sha256"
         timestamp = str(int(time.time()))
-        import hmac
-        message = f"{client_id}:{timestamp}"
-        signature = hmac.new(client_secret.encode('utf-8'), message.encode('utf-8'), hashlib.sha256).hexdigest()
+        message = f"{client_secret}{client_id}{timestamp}"
+        signature = hashlib.sha256(message.encode('utf-8')).hexdigest()
 
         # Call acknowledge
         url = reverse('issuer_bank:acknowledge_application')
