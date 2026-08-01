@@ -284,7 +284,6 @@ class ReceiveApplicationView(LoggingAPIView):
     """
     POST /v1/issuer-bank/application/receive
     Pushes student data to TAP.
-    Per Constitution P2, this endpoint is strictly idempotent on apaar_id.
     """
     def post(self, request, *args, **kwargs):
         data = request.data
@@ -294,7 +293,12 @@ class ReceiveApplicationView(LoggingAPIView):
                 data = decrypt_abc_payload(data['encryptedData'])
                 request._decrypted_data = data
             except Exception as e:
-                return Response({"error": f"Decryption failed: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({
+                    "status": "error",
+                    "status_code": "400",
+                    "message": "Invalid request format",
+                    "errors": [{"field": "encryptedData", "message": f"Decryption failed: {str(e)}"}]
+                }, status=status.HTTP_400_BAD_REQUEST)
 
         # Flatten nested structured ABC data if present (backward compatible)
         if isinstance(data, dict) and ('APAAR_ID' in data or 'PERSONAL_INFO' in data):
@@ -302,19 +306,25 @@ class ReceiveApplicationView(LoggingAPIView):
 
         apaar_id = data.get('apaar_id')
         if not apaar_id:
-            return Response(
-                {"error": "apaar_id is mandatory."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({
+                "status": "error",
+                "status_code": "400",
+                "message": "Invalid request format",
+                "errors": [{"field": "APAAR_ID", "message": "APAAR_ID is required"}]
+            }, status=status.HTTP_400_BAD_REQUEST)
 
         # Idempotency check: if student already exists, return existing tracking_id
         try:
             student = Student.objects.get(apaar_id=apaar_id)
             return Response({
-                "tracking_id": student.tracking_id,
-                "application_status": student.application_status,
-                "created": False,
-                "message": "Application already received. Idempotency matched."
+                "status": "success",
+                "status_code": "200",
+                "message": "Application already received. Idempotency matched.",
+                "data": {
+                    "tracking_id": student.tracking_id,
+                    "processing_status": student.application_status,
+                    "received_at": student.created_at.strftime("%Y-%m-%dT%H:%M:%SZ") if student.created_at else ""
+                }
             }, status=status.HTTP_200_OK)
         except Student.DoesNotExist:
             pass
@@ -324,69 +334,43 @@ class ReceiveApplicationView(LoggingAPIView):
             # Use APPLICATION_REFERENCE_NUMBER as tracking_id
             tracking_id = data.get('application_reference_number') or data.get('APPLICATION_REFERENCE_NUMBER')
             if not tracking_id:
-                return Response({"error": "APPLICATION_REFERENCE_NUMBER is required."}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({
+                    "status": "error",
+                    "status_code": "400",
+                    "message": "Invalid request format",
+                    "errors": [{"field": "APPLICATION_REFERENCE_NUMBER", "message": "APPLICATION_REFERENCE_NUMBER is required"}]
+                }, status=status.HTTP_400_BAD_REQUEST)
 
-            # Save student record
+            # Save student record and automatically transition to PROCESSING
             student = serializer.save(
                 tracking_id=tracking_id,
-                application_status='RECEIVED',
+                application_status='PROCESSING',
                 kyc_status='MIN_KYC'
             )
 
             return Response({
-                "tracking_id": student.tracking_id,
-                "application_status": student.application_status,
-                "created": True
-            }, status=status.HTTP_201_CREATED)
+                "status": "success",
+                "status_code": "200",
+                "message": "Application received successfully",
+                "data": {
+                    "tracking_id": student.tracking_id,
+                    "processing_status": student.application_status,
+                    "received_at": student.created_at.strftime("%Y-%m-%dT%H:%M:%SZ") if student.created_at else ""
+                }
+            }, status=status.HTTP_200_OK)
 
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-class AcknowledgeApplicationView(LoggingAPIView):
-    """
-    POST /v1/issuer-bank/application/acknowledge
-    Confirms receipt of tracking ID and transitions status to PROCESSING.
-    """
-    def post(self, request, *args, **kwargs):
-        data = request.data
-        if isinstance(data, dict) and 'encryptedData' in data:
-            from applications.crypto import decrypt_abc_payload
-            try:
-                data = decrypt_abc_payload(data['encryptedData'])
-                request._decrypted_data = data
-            except Exception as e:
-                return Response({"error": f"Decryption failed: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
-        
-        tracking_id = data.get('tracking_id') or data.get('TRACKING_ID')
-        apaar_id = data.get('apaar_id') or data.get('APAAR_ID')
-
-        if not tracking_id and not apaar_id:
-            return Response(
-                {"error": "Either tracking_id or apaar_id is required."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # Look up student
-        student = None
-        if tracking_id:
-            student = get_object_or_404(Student, tracking_id=tracking_id)
-        elif apaar_id:
-            student = get_object_or_404(Student, apaar_id=apaar_id)
-
-        # Transition status from RECEIVED to PROCESSING
-        if student.application_status == 'RECEIVED':
-            student.application_status = 'PROCESSING'
-            student.save()
-            
-            # Fire outbound status webhook to ABC
-            dispatcher = ABCWebhookDispatcher()
-            dispatcher.dispatch_application_status_update(student, "Application acknowledged by ABC")
+        # Format serializer errors
+        errors_list = []
+        for field, msgs in serializer.errors.items():
+            for msg in msgs:
+                errors_list.append({"field": field, "message": msg})
 
         return Response({
-            "tracking_id": student.tracking_id,
-            "application_status": student.application_status,
-            "message": "Application successfully acknowledged and set to PROCESSING."
-        }, status=status.HTTP_200_OK)
+            "status": "error",
+            "status_code": "400",
+            "message": "Invalid request format",
+            "errors": errors_list
+        }, status=status.HTTP_400_BAD_REQUEST)
 
 
 class ApplicationStatusView(LoggingAPIView):
@@ -395,7 +379,6 @@ class ApplicationStatusView(LoggingAPIView):
     Pulls status from TWA client first, updates record, and returns status.
     """
     def get(self, request, tracking_id, *args, **kwargs):
-        # Body decryption for GET
         data = request.data
         if not data and request.body:
             import json
@@ -410,24 +393,38 @@ class ApplicationStatusView(LoggingAPIView):
                 data = decrypt_abc_payload(data['encryptedData'])
                 request._decrypted_data = data
             except Exception as e:
-                return Response({"error": f"Decryption failed: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({
+                    "status": "error",
+                    "status_code": "400",
+                    "message": "Invalid request format",
+                    "errors": [{"field": "encryptedData", "message": f"Decryption failed: {str(e)}"}]
+                }, status=status.HTTP_400_BAD_REQUEST)
         
         body_tracking_id = data.get('tracking_id') or data.get('TRACKING_ID') if isinstance(data, dict) else None
         if body_tracking_id and body_tracking_id != tracking_id:
-            return Response({"error": "Tracking ID in path and body do not match."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({
+                "status": "error",
+                "status_code": "400",
+                "message": "Invalid request format",
+                "errors": [{"field": "TRACKING_ID", "message": "Tracking ID in path and body do not match."}]
+            }, status=status.HTTP_400_BAD_REQUEST)
 
-        student = get_object_or_404(Student, tracking_id=tracking_id)
+        try:
+            student = Student.objects.get(tracking_id=tracking_id)
+        except Student.DoesNotExist:
+            return Response({
+                "status": "error",
+                "status_code": "404",
+                "message": f"Application not found for tracking_id: {tracking_id}"
+            }, status=status.HTTP_404_NOT_FOUND)
 
-        # Per Spec, pull latest status from TWA first
-        # Per Constitution P5, this lives behind the TWAClient interface
         twa_client = TWAClient()
         try:
             twa_response = twa_client.pull_status(student)
             if twa_response and twa_response.get('success'):
-                data = twa_response.get('data', {})
-                # Update student record with values returned from TWA if status changes
-                twa_app_status = data.get('application_status')
-                twa_kyc_status = data.get('kyc_status')
+                twa_data = twa_response.get('data', {})
+                twa_app_status = twa_data.get('application_status')
+                twa_kyc_status = twa_data.get('kyc_status')
 
                 app_status_changed = False
                 kyc_status_changed = False
@@ -441,24 +438,23 @@ class ApplicationStatusView(LoggingAPIView):
 
                 if app_status_changed or kyc_status_changed:
                     student.save()
-                    
-                    # Fire outbound webhooks for the changed statuses
                     dispatcher = ABCWebhookDispatcher()
-                    if app_status_changed:
-                        dispatcher.dispatch_application_status_update(student, "Status updated from TWA pull")
-                    if kyc_status_changed:
-                        dispatcher.dispatch_kyc_status_update(student, "KYC status updated from TWA pull")
+                    dispatcher.dispatch_kyc_status_update(student, "Status updated from TWA pull")
         except Exception:
-            # Robustness: if TWA call fails, we proceed with current local database record
             pass
 
         return Response({
-            "tracking_id": student.tracking_id,
-            "apaar_id": student.apaar_id,
-            "application_status": student.application_status,
-            "kyc_status": student.kyc_status,
-            "twa_synced": student.twa_synced,
-            "updated_at": student.updated_at
+            "status": "success",
+            "status_code": "200",
+            "message": "Application status retrieved successfully",
+            "data": {
+                "tracking_id": student.tracking_id,
+                "application_reference": student.apaar_id,
+                "processing_status": student.application_status,
+                "kyc_status": student.kyc_status,
+                "remarks": "Document verification in progress" if student.application_status == "PROCESSING" else "",
+                "updated_at": student.updated_at.strftime("%Y-%m-%dT%H:%M:%SZ") if student.updated_at else ""
+            }
         }, status=status.HTTP_200_OK)
 
 
@@ -468,12 +464,9 @@ class DashboardStatsView(LoggingAPIView):
     Returns aggregate counts for student applications.
     """
     def get(self, request, *args, **kwargs):
-        # Count applications by status
         status_counts = Student.objects.values('application_status').annotate(count=Count('id'))
-        # Count applications by kyc_status
         kyc_counts = Student.objects.values('kyc_status').annotate(count=Count('id'))
 
-        # Standardize response structure
         status_dict = {
             'RECEIVED': 0,
             'PROCESSING': 0,
@@ -498,11 +491,19 @@ class DashboardStatsView(LoggingAPIView):
                 kyc_dict[k_val] = item['count']
 
         total_students = Student.objects.count()
+        import datetime
+        last_updated = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
         return Response({
-            "total_students": total_students,
-            "application_status_counts": status_dict,
-            "kyc_status_counts": kyc_dict
+            "status": "success",
+            "status_code": "200",
+            "message": "Statistics retrieved successfully",
+            "data": {
+                "total_students": total_students,
+                "application_status_counts": status_dict,
+                "kyc_status_counts": kyc_dict,
+                "last_updated": last_updated
+            }
         }, status=status.HTTP_200_OK)
 
 

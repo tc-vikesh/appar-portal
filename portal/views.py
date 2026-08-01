@@ -11,6 +11,7 @@ from cms.models import CMSPage
 from m2p.client import M2PClient
 from twa.client import TWAClient
 from applications.aadhaar_client import AadhaarClient
+from webhooks.dispatcher import ABCWebhookDispatcher
 
 class LandingView(View):
     """
@@ -44,10 +45,12 @@ class AadhaarSendOTPView(View):
             return JsonResponse({"success": False, "error": "Invalid JSON payload."}, status=400)
 
         aadhaar_number = body.get('aadhaar_number', '').strip()
-        consent = body.get('consent') is True
+        consent_aadhaar = body.get('consent') is True
+        consent_address_mismatch = body.get('consent_address_mismatch') is True
+        consent_kyc_and_ppi = body.get('consent_kyc_and_ppi') is True
 
-        if not consent:
-            return JsonResponse({"success": False, "error": "You must accept the terms and provide consent to proceed."}, status=400)
+        if not (consent_aadhaar and consent_address_mismatch and consent_kyc_and_ppi):
+            return JsonResponse({"success": False, "error": "You must accept all terms and provide all consents to proceed."}, status=400)
 
         if not aadhaar_number:
             return JsonResponse({"success": False, "error": "Aadhaar number is required."}, status=400)
@@ -62,9 +65,12 @@ class AadhaarSendOTPView(View):
             
             if success:
                 ref_id = resp.get("ref_id") or resp.get("data", {}).get("ref_id")
-                # Save aadhaar number and ref_id on student record
+                # Save aadhaar number, ref_id, and consents on student record
                 student.aadhaar_number = aadhaar_number
                 student.aadhaar_ref_id = ref_id
+                student.consent_aadhaar = consent_aadhaar
+                student.consent_address_mismatch = consent_address_mismatch
+                student.consent_kyc_and_ppi = consent_kyc_and_ppi
                 student.save()
 
                 return JsonResponse({"success": True, "ref_id": ref_id})
@@ -260,6 +266,10 @@ class OTPVerifyView(View):
                 # Transition statuses
                 student.kyc_status = 'MIN_KYC'
                 student.save()
+
+                # Trigger ABC webhook for KYC status update
+                dispatcher = ABCWebhookDispatcher()
+                dispatcher.dispatch_kyc_status_update(student, "Completed MIN KYC")
 
                 # Call TWA Sync Client (Stage) - Non-blocking
                 twa = TWAClient()

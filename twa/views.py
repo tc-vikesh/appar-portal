@@ -160,7 +160,7 @@ class ApplicationStatusWebhookView(WebhookLoggingAPIView):
 
         # Webhook callback forwarding to ABC
         dispatcher = ABCWebhookDispatcher()
-        dispatcher.dispatch_application_status_update(student, remarks)
+        dispatcher.dispatch_kyc_status_update(student, remarks)
 
         return Response({
             "tracking_id": student.tracking_id,

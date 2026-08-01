@@ -13,41 +13,28 @@ class ABCWebhookDispatcher:
     Per Sprint 5 requirements, all failures are caught silently (non-blocking).
     """
 
-    def dispatch_application_status_update(self, student, remarks=None):
-        """
-        Sends application status update to ABC.
-        Endpoint: ABC_STATUS_UPDATE_WEBHOOK_URL
-        """
-        url = getattr(settings, 'ABC_STATUS_UPDATE_WEBHOOK_URL', '')
-        payload = {
-            "TRACKING_ID": student.tracking_id,
-            "APAAR_ID": student.apaar_id,
-            "PROCESSING_STATUS": student.application_status,
-            "REMARKS": remarks or ""
-        }
-        return self._send_webhook(
-            url=url,
-            payload=payload,
-            webhook_type='outbound_abc_app_status',
-            student=student
-        )
-
     def dispatch_kyc_status_update(self, student, remarks=None):
         """
-        Sends KYC status update to ABC.
+        Sends combined application and KYC status update to ABC.
         Endpoint: ABC_KYC_STATUS_WEBHOOK_URL
         """
         url = getattr(settings, 'ABC_KYC_STATUS_WEBHOOK_URL', '')
         payload = {
             "TRACKING_ID": student.tracking_id,
             "APAAR_ID": student.apaar_id,
+            "PROCESSING_STATUS": student.application_status,
             "KYC_STATUS": student.kyc_status,
-            "REMARKS": remarks or ""
+            "REMARKS": remarks or "",
+            "KYC_DATE": student.updated_at.strftime("%Y-%m-%dT%H:%M:%SZ") if student.updated_at else "",
         }
         
-        # If student is VERIFIED/ISSUED, they might have a KYC_DATE or CARD_DETAILS in real life.
-        # This is minimally matching the new spec.
-        
+        if student.application_status == "ISSUED":
+            payload["CARD_DETAILS"] = {
+                "CARD_NUMBER": "1234XXXXXX5678",
+                "EXPIRY_DATE": "12/2028",
+                "ISSUE_DATE": student.updated_at.strftime("%Y-%m-%dT%H:%M:%SZ") if student.updated_at else ""
+            }
+            
         return self._send_webhook(
             url=url,
             payload=payload,

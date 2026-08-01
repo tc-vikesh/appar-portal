@@ -62,6 +62,12 @@ class Student(models.Model):
     m2p_entity_id = models.CharField(max_length=100, null=True, blank=True)
     m2p_kit_no = models.CharField(max_length=100, null=True, blank=True)
     m2p_token = models.TextField(null=True, blank=True)
+    
+    # Consents
+    consent_aadhaar = models.BooleanField(default=False)
+    consent_address_mismatch = models.BooleanField(default=False)
+    consent_kyc_and_ppi = models.BooleanField(default=False)
+    
     twa_synced = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

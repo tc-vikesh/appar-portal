@@ -135,7 +135,24 @@
             I hereby give my explicit consent to Transcorp International Ltd. to verify my Aadhaar details with UIDAI/Govt databases for the purpose of issuing my student card and completing my KYC checks.
         </span>
     </label>
-    <span id="error-consent" class="error-text" style="display: block; margin-top: -16px; margin-bottom: 24px;"></span>
+    
+    <label class="checkbox-container">
+        <input type="checkbox" id="consent-address-mismatch" name="consent-address-mismatch">
+        <span class="checkmark"></span>
+        <span class="checkbox-text">
+            I hereby confirm, that in the case of a mismatch in the address detail provided by me and the address registered and retrieved from Aadhaar, I consent to consider my address registered in Aadhaar for records, if required: <a href="https://transcorpint.com/wp-content/uploads/2022/04/TC-Transcorp-Ltd.pdf" target="_blank" style="color:#0000FF">Terms and Conditions</a>
+        </span>
+    </label>
+
+    <label class="checkbox-container">
+        <input type="checkbox" id="consent-kyc-and-ppi" name="consent-kyc-and-ppi">
+        <span class="checkmark"></span>
+        <span class="checkbox-text">
+            That all the particulars and information given in this Application Form (and all documents referred or provided therewith) are true, correct, complete and up-to-date in all respects and I have not withheld any information. I understand that certain particulars given by me are required by operational guidelines governing issuance of Pre-Paid Instruments (PPI). I agree and undertake to provide further information and documents that Transcorp International Limited may require. I hereby give my consent to use all information and KYC documents provided by me for the purpose of issuing the PPI to me. I hereby undertake to follow all the terms and conditions which are applicable on issuance of PPI. I permit contactless transactions facility to be enabled on my Transcorp PPI instrument.
+        </span>
+    </label>
+    
+    <span id="error-consent" class="error-text" style="display: block; margin-top: 8px; margin-bottom: 24px;"></span>
 
     <!-- OTP verification container -->
     <div id="otp-container" class="form-group" style="display: none; margin-top: 24px; animation: fadeIn 0.4s ease-out;">
@@ -247,6 +264,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const aadhaarInput = document.getElementById('aadhaar_number');
     const verifyBtn = document.getElementById('btn-verify-aadhaar');
     const consentCheckbox = document.getElementById('consent');
+    const consentAddressCheckbox = document.getElementById('consent-address-mismatch');
+    const consentKycCheckbox = document.getElementById('consent-kyc-and-ppi');
     const otpContainer = document.getElementById('otp-container');
     const otpInput = document.getElementById('otp');
     const confirmBtn = document.getElementById('btn-confirm-otp');
@@ -298,6 +317,8 @@ document.addEventListener('DOMContentLoaded', function() {
         
         const aadhaarVal = aadhaarInput.value.replace(/\s+/g, '').trim();
         const consentVal = consentCheckbox.checked;
+        const consentAddressVal = consentAddressCheckbox.checked;
+        const consentKycVal = consentKycCheckbox.checked;
         
         let hasError = false;
         if (!aadhaarVal) {
@@ -310,8 +331,8 @@ document.addEventListener('DOMContentLoaded', function() {
             hasError = true;
         }
         
-        if (!consentVal) {
-            errorConsent.innerText = "You must accept the terms and provide consent to proceed.";
+        if (!consentVal || !consentAddressVal || !consentKycVal) {
+            errorConsent.innerText = "You must accept all terms and provide all consents to proceed.";
             errorConsent.style.display = 'block';
             hasError = true;
         }
@@ -331,7 +352,9 @@ document.addEventListener('DOMContentLoaded', function() {
             },
             body: JSON.stringify({
                 aadhaar_number: aadhaarVal,
-                consent: consentVal
+                consent: consentVal,
+                consent_address_mismatch: consentAddressVal,
+                consent_kyc_and_ppi: consentKycVal
             })
         })
         .then(response => response.json().then(data => ({ status: response.status, body: data })))
@@ -340,6 +363,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 activeRefId = body.ref_id;
                 verifyBtn.innerText = "Aadhaar Sent";
                 consentCheckbox.disabled = true;
+                consentAddressCheckbox.disabled = true;
+                consentKycCheckbox.disabled = true;
                 otpContainer.style.display = 'block';
                 otpInput.focus();
             } else {
