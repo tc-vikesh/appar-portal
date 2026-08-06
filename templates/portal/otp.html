@@ -4,7 +4,7 @@
 
 {% block header %}
 <h1 class="gradient-text">Enter Verification Code</h1>
-<p>An OTP verification code has been successfully sent to your registered mobile number: <strong>+91 ******{{ student.mobile|slice:"-4:" }}</strong>.</p>
+<p>An OTP has been sent to your registered mobile number: <strong>+91 ******{{ student.mobile|slice:"-4:" }}</strong> for Small PPI KYC verification.</p>
 {% endblock %}
 
 {% block content %}
@@ -47,12 +47,12 @@
         >
     </div>
 
-    <button type="submit" class="btn" style="margin-top: 10px;">Verify & create Transcorp PPI account</button>
+    <button type="submit" class="btn" style="margin-top: 10px;">Verify & Complete Small KYC</button>
 
     <div style="margin-top: 24px;">
         <p style="font-size: 13px; margin-bottom: 0;">
             Didn't receive the code? 
-            <a href="{% url 'portal:landing' student.tracking_id %}" style="color: var(--accent-secondary); text-decoration: none; font-weight: 600;">Go back and regenerate</a>.
+            <a href="{% url 'portal:landing' student.tracking_id %}" style="color: var(--accent-secondary); text-decoration: none; font-weight: 600;">Resend OTP</a>.
         </p>
     </div>
 </form>

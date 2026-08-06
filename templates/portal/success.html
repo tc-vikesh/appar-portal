@@ -7,13 +7,13 @@
     ✓
 </div>
 <h1 class="gradient-text">{{ cms_page.title }}</h1>
-<p>Your MIN KYC verification was completed. Your student card is ready to be finalized!</p>
+<p>Congratulations! Your Small KYC verification is complete. Your student card is now being processed for issuance.</p>
 {% endblock %}
 
 {% block content %}
 <!-- Renders CMSPage Dynamic Content -->
 <div class="cms-content" style="text-align: left; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--card-border); border-radius: 16px; padding: 24px; margin-bottom: 30px;">
-    {{ cms_page.content|safe }}
+    {{ dynamic_content|safe }}
 </div>
 
 <div class="app-links" style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;">
@@ -28,4 +28,24 @@
 <p style="font-size: 12px; text-align: center; color: var(--text-muted); margin-bottom: 0;">
     Your Tracking ID is: <strong style="color: var(--text-main);">{{ student.tracking_id }}</strong>
 </p>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Expand max-width of the glass card to allow text to display without excessive wrapping */
+    .glass-card {
+        max-width: 950px !important;
+    }
+    
+    /* Increase line spacing and padding for better readability */
+    .cms-content p {
+        line-height: 1.6;
+        margin-bottom: 16px;
+    }
+    
+    .cms-content li {
+        line-height: 1.2;
+        margin-bottom: 10px;
+    }
+</style>
 {% endblock %}

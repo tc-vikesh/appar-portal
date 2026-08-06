@@ -64,9 +64,11 @@ class Student(models.Model):
     m2p_token = models.TextField(null=True, blank=True)
     
     # Consents
-    consent_aadhaar = models.BooleanField(default=False)
+    consent_aadhaar_ovd = models.BooleanField(default=False)
+    consent_ckycr = models.BooleanField(default=False)
     consent_address_mismatch = models.BooleanField(default=False)
-    consent_kyc_and_ppi = models.BooleanField(default=False)
+    consent_kyc_ppi = models.BooleanField(default=False)
+    consent_terms_conditions = models.BooleanField(default=False)
     
     twa_synced = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)

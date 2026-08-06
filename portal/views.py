@@ -45,12 +45,14 @@ class AadhaarSendOTPView(View):
             return JsonResponse({"success": False, "error": "Invalid JSON payload."}, status=400)
 
         aadhaar_number = body.get('aadhaar_number', '').strip()
-        consent_aadhaar = body.get('consent') is True
+        consent_aadhaar_ovd = body.get('consent_aadhaar_ovd') is True
+        consent_ckycr = body.get('consent_ckycr') is True
         consent_address_mismatch = body.get('consent_address_mismatch') is True
-        consent_kyc_and_ppi = body.get('consent_kyc_and_ppi') is True
+        consent_kyc_ppi = body.get('consent_kyc_ppi') is True
+        consent_terms_conditions = body.get('consent_terms_conditions') is True
 
-        if not (consent_aadhaar and consent_address_mismatch and consent_kyc_and_ppi):
-            return JsonResponse({"success": False, "error": "You must accept all terms and provide all consents to proceed."}, status=400)
+        if not (consent_aadhaar_ovd and consent_ckycr and consent_address_mismatch and consent_kyc_ppi and consent_terms_conditions):
+            return JsonResponse({"success": False, "error": "You must accept all 5 terms and provide all consents to proceed."}, status=400)
 
         if not aadhaar_number:
             return JsonResponse({"success": False, "error": "Aadhaar number is required."}, status=400)
@@ -68,9 +70,11 @@ class AadhaarSendOTPView(View):
                 # Save aadhaar number, ref_id, and consents on student record
                 student.aadhaar_number = aadhaar_number
                 student.aadhaar_ref_id = ref_id
-                student.consent_aadhaar = consent_aadhaar
+                student.consent_aadhaar_ovd = consent_aadhaar_ovd
+                student.consent_ckycr = consent_ckycr
                 student.consent_address_mismatch = consent_address_mismatch
-                student.consent_kyc_and_ppi = consent_kyc_and_ppi
+                student.consent_kyc_ppi = consent_kyc_ppi
+                student.consent_terms_conditions = consent_terms_conditions
                 student.save()
 
                 return JsonResponse({"success": True, "ref_id": ref_id})
@@ -314,18 +318,44 @@ class SuccessView(View):
         if student.kyc_status != 'MIN_KYC':
             return redirect(reverse('portal:landing', kwargs={'tracking_id': tracking_id}))
 
+        masked_mobile = f"XXXXXX{student.mobile[-4:]}" if student.mobile and len(student.mobile) >= 4 else "XXXXXX1643"
+
+        default_content = """<p>Please note: As per RBI's Master Direction on PPIs, a Small PPI carries reduced limits on loading, balance and usage, and cannot be used for cash withdrawal. To enhance your limits and unlock full features, please complete Full KYC.</p>
+<h4>Next Steps:</h4>
+<ol>
+    <li>Download the Transcorp Web App (TransWallet)- through link below.</li>
+    <li>Log in using your registered mobile number <strong>+91 {mobile}</strong>.</li>
+    <li>Complete Full KYC / Video-based Customer Identification Process (V-CIP) to upgrade to a Full-KYC PPI and enhance your transaction limits.</li>
+    <li>Track your physical card delivery status inside the Profile Section of app.</li>
+    <li>Manage your card —set/modify limits, block/ unblock, or request replacement — from the "Profile &gt; Manage Card" section.</li>
+    <li>View balance and Transaction history or download statement to track your expenses.</li>
+    <li>Read the full Terms &amp; Conditions before first use.</li>
+    <li>For queries or complaints, use the in-app Customer Care section.</li>
+</ol>
+<p><em>This PPI is issued by Transcorp International Limited, authorised by the Reserve Bank of India, and is subject to RBI's Master Directions on Prepaid Payment Instruments.</em></p>"""
+
         # Load success page CMS content
         cms_page, created = CMSPage.objects.get_or_create(
             slug='success-page',
             defaults={
                 'title': 'Registration Successful!',
-                'content': '<p>Congratulations! Your MIN KYC has been verified successfully.</p><h4>Next Steps:</h4><ol><li>Download the <strong>Transcorp Web App (TWA)</strong>.</li><li>Log in using your mobile number <strong>+91 ' + student.mobile + '</strong>.</li><li>Complete full video KYC and track your digital card delivery directly inside the app!</li></ol>'
+                'content': default_content
             }
         )
 
+        # Force update content in case it already exists in the DB with the old text
+        if cms_page.content != default_content:
+            cms_page.content = default_content
+            cms_page.title = 'Registration Successful!'
+            cms_page.save()
+
+        # Replace the placeholder dynamically for the current student
+        dynamic_content = cms_page.content.replace('{mobile}', masked_mobile)
+
         return render(request, 'portal/success.html', {
             'student': student,
-            'cms_page': cms_page
+            'cms_page': cms_page,
+            'dynamic_content': dynamic_content
         })
 
 
