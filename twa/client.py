@@ -101,6 +101,28 @@ class TWAClient:
         elif student.aadhaar_number:
             aadhaar_last_4 = student.aadhaar_number
 
+        # Generate presigned URL for photo if it's stored in S3
+        photo_url = student.photo_path or ""
+        if photo_url and not photo_url.startswith('http') and not photo_url.startswith('/media/'):
+            try:
+                import boto3
+                s3_client = boto3.client(
+                    's3',
+                    aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+                    aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+                    region_name=settings.AWS_S3_REGION_NAME
+                )
+                photo_url = s3_client.generate_presigned_url(
+                    'get_object',
+                    Params={
+                        'Bucket': settings.AWS_STORAGE_BUCKET_NAME,
+                        'Key': photo_url
+                    },
+                    ExpiresIn=3600  # 1 hour expiry
+                )
+            except Exception as e:
+                print(f"Error generating presigned URL: {e}")
+
         payload = {
             "firstName": first_name,
             "lastName": last_name,
@@ -129,6 +151,7 @@ class TWAClient:
                 "aadhaar_number": aadhaar_last_4,
                 "full_name": (student.full_name or "").upper()
             },
+            "photoUrl": photo_url,
             "cards": [
                 {
                     "kitNumber": student.m2p_kit_no or "",

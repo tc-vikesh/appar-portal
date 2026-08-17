@@ -75,6 +75,33 @@ class Student(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     @property
+    def get_photo_url(self):
+        if not self.photo_path:
+            return ""
+        if str(self.photo_path).startswith('http') or str(self.photo_path).startswith('/media/'):
+            return self.photo_path
+            
+        try:
+            from django.conf import settings
+            import boto3
+            s3_client = boto3.client(
+                's3',
+                aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+                aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+                region_name=settings.AWS_S3_REGION_NAME
+            )
+            return s3_client.generate_presigned_url(
+                'get_object',
+                Params={
+                    'Bucket': settings.AWS_STORAGE_BUCKET_NAME,
+                    'Key': self.photo_path
+                },
+                ExpiresIn=3600
+            )
+        except Exception:
+            return self.photo_path
+
+    @property
     def current_address_line(self):
         if not self.current_address or not isinstance(self.current_address, dict):
             return ""

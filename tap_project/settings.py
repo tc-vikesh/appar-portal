@@ -149,6 +149,14 @@ TWA_WEBHOOK_ALLOWED_IPS = env.list('TWA_WEBHOOK_ALLOWED_IPS', default=['127.0.0.
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
+# AWS S3 Configuration for Profile Pictures
+AWS_ACCESS_KEY_ID = env('AWS_ACCESS_KEY_ID', default='')
+AWS_SECRET_ACCESS_KEY = env('AWS_SECRET_ACCESS_KEY', default='')
+AWS_STORAGE_BUCKET_NAME = env('AWS_STORAGE_BUCKET_NAME', default='')
+AWS_S3_REGION_NAME = env('AWS_S3_REGION_NAME', default='ap-south-1')
+ENV_TYPE = env('ENV_TYPE', default='UAT')  # UAT or PROD
+DHOT_LIVE_BASE_URL = env('DHOT_LIVE_BASE_URL', default='')
+
 # Cashfree Verification & Aadhaar Security Settings
 CASHFREE_BASE_URL = env('CASHFREE_BASE_URL', default='https://sandbox.cashfree.com/verification')
 CASHFREE_CLIENT_ID = env('CASHFREE_CLIENT_ID', default=env('PAN_CLIENT_ID', default=''))

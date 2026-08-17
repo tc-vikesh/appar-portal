@@ -11,7 +11,7 @@
 <!-- Student Details Information Grid -->
 {% if student.photo_path %}
 <div class="profile-photo-container">
-    <img src="{{ student.photo_path }}" alt="{{ student.full_name }}'s Photo" class="profile-photo">
+    <img src="{{ student.get_photo_url }}" alt="{{ student.full_name }}'s Photo" class="profile-photo">
 </div>
 {% endif %}
 

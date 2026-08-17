@@ -171,19 +171,18 @@ class LoggingAPIView(APIView):
 
 def download_student_photo(photo_url, apaar_id):
     """
-    Downloads the student photo from the provided URL and saves it locally.
-    Returns the local relative path to be served (e.g. '/media/photos/<apaar_id>.jpg').
-    If download fails, returns the original photo_url.
+    Downloads the student photo from the provided URL and uploads it to AWS S3.
+    Returns the S3 object key (e.g., 'photos/<apaar_id>.jpg').
+    If download or upload fails, returns the original photo_url.
     """
     if not photo_url or not (str(photo_url).startswith('http://') or str(photo_url).startswith('https://')):
         return photo_url
     
     from django.conf import settings
     import requests
+    import boto3
+    import io
     import os
-    
-    media_photos_dir = os.path.join(settings.MEDIA_ROOT, 'photos')
-    os.makedirs(media_photos_dir, exist_ok=True)
     
     # Extract file extension, default to .jpg
     ext = '.jpg'
@@ -196,16 +195,42 @@ def download_student_photo(photo_url, apaar_id):
     except Exception:
         pass
         
-    filename = f"{apaar_id}{ext}"
-    filepath = os.path.join(media_photos_dir, filename)
+    env_type = getattr(settings, 'ENV_TYPE', 'UAT')
+    s3_key = f"{env_type}/photos/{apaar_id}{ext}"
+    local_filename = f"{apaar_id}{ext}"
     
     try:
         response = requests.get(photo_url, timeout=10)
         if response.status_code == 200:
-            with open(filepath, 'wb') as f:
-                f.write(response.content)
-            return f"/media/photos/{filename}"
-    except Exception:
+            if settings.AWS_ACCESS_KEY_ID and settings.AWS_STORAGE_BUCKET_NAME:
+                s3_client = boto3.client(
+                    's3',
+                    aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+                    aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+                    region_name=settings.AWS_S3_REGION_NAME
+                )
+                
+                content_type = 'image/jpeg'
+                if ext.lower() == '.png':
+                    content_type = 'image/png'
+                
+                s3_client.upload_fileobj(
+                    io.BytesIO(response.content),
+                    settings.AWS_STORAGE_BUCKET_NAME,
+                    s3_key,
+                    ExtraArgs={'ContentType': content_type}
+                )
+                return s3_key
+            else:
+                # Fallback to local storage if AWS is not configured
+                media_photos_dir = os.path.join(settings.MEDIA_ROOT, 'photos')
+                os.makedirs(media_photos_dir, exist_ok=True)
+                filepath = os.path.join(media_photos_dir, local_filename)
+                with open(filepath, 'wb') as f:
+                    f.write(response.content)
+                return f"/media/photos/{local_filename}"
+    except Exception as e:
+        print(f"Error handling photo: {e}")
         pass
     return photo_url
 
