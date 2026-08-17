@@ -43,12 +43,14 @@ class TWATestCase(TestCase):
         # Standard settings for TWA UAT test
         settings.TWA_SYNC_URL = "https://api.stage.transcorpint.com/user/external/onboard"
         settings.TWA_AUTH_TOKEN = "TEST_AUTH_TOKEN"
+        settings.TWA_ENCRYPTION_KEY = "1pISbM/UJyk0kNiDoazXxrLq2TkLdfAy74O2Dzbajew="
+        settings.ABC_ENCRYPTION_KEY = "1pISbM/UJyk0kNiDoazXxrLq2TkLdfAy74O2Dzbajew="
         settings.TWA_WEBHOOK_ALLOWED_IPS = ["127.0.0.1", "10.0.0.5"]
 
     # 1. TWA Client Unit Tests (Outbound)
     @patch('requests.post')
     def test_twa_client_sync_onboard_success(self, mock_post):
-        """Test TWAClient sync_onboard outbound call success and TWAApiLog creation."""
+        """Test TWAClient sync_onboard outbound call success, AES-256-GCM encryption, and TWAApiLog creation."""
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
@@ -62,6 +64,11 @@ class TWATestCase(TestCase):
 
         self.assertTrue(response.get("success"))
 
+        # Verify requests.post was called with encryptedData payload
+        called_args, called_kwargs = mock_post.call_args
+        sent_json = called_kwargs.get('json', {})
+        self.assertIn("encryptedData", sent_json)
+
         # Verify exactly one outbound log row is created in TWAApiLog (Constitution P1)
         log = TWAApiLog.objects.first()
         self.assertIsNotNone(log)
@@ -70,11 +77,41 @@ class TWATestCase(TestCase):
         self.assertEqual(log.http_status, 200)
         self.assertTrue(log.success)
 
-        # Verify that request payload is logged and has core fields
+        # Verify that plaintext request payload is logged and has core fields
         self.assertEqual(log.request_payload.get("entityId"), self.student.apaar_id)
-        # Verify sensitive Aadhaar and Token fields are logged in plain text (no masking)
         self.assertEqual(log.request_payload.get("idValue"), "9012")
         self.assertEqual(log.request_payload.get("vcipToken"), "TOKEN-TEST-5678")
+
+        # Verify that encrypted_request_payload is also logged
+        self.assertIsNotNone(log.encrypted_request_payload)
+        self.assertIn("encryptedData", log.encrypted_request_payload)
+
+    @patch('requests.post')
+    def test_twa_client_sync_onboard_encrypted_response(self, mock_post):
+        """Test TWAClient sync_onboard handles encrypted response from TWA."""
+        from twa.crypto import encrypt_twa_payload
+        plain_response = {
+            "success": True,
+            "message": "Encrypted sync response received"
+        }
+        enc_resp = encrypt_twa_payload(plain_response)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = enc_resp
+        mock_post.return_value = mock_response
+
+        client = TWAClient()
+        response = client.sync_onboard(self.student)
+
+        self.assertTrue(response.get("success"))
+        self.assertEqual(response.get("message"), "Encrypted sync response received")
+
+        log = TWAApiLog.objects.first()
+        self.assertIsNotNone(log)
+        self.assertEqual(log.response_payload.get("message"), "Encrypted sync response received")
+        self.assertIsNotNone(log.encrypted_response_payload)
+        self.assertIn("encryptedData", log.encrypted_response_payload)
 
     @patch('requests.post')
     def test_twa_client_sync_onboard_http_failure(self, mock_post):
@@ -273,6 +310,64 @@ class TWATestCase(TestCase):
         log = WebhookLog.objects.first()
         self.assertIsNotNone(log)
         self.assertFalse(log.success)
+
+    def test_inbound_application_status_webhook_encrypted(self):
+        """Test inbound application status webhook with AES-256-GCM encrypted payload."""
+        from twa.crypto import encrypt_twa_payload
+        url = reverse('twa:application_status_webhook')
+        plain_payload = {
+            "tracking_id": self.student.tracking_id,
+            "processing_status": "PROCESSING",
+            "remarks": "In progress encrypted"
+        }
+        enc_payload = encrypt_twa_payload(plain_payload)
+
+        response = self.client.post(
+            url,
+            data=json.dumps(enc_payload),
+            content_type='application/json',
+            REMOTE_ADDR='127.0.0.1'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.student.refresh_from_db()
+        self.assertEqual(self.student.application_status, "PROCESSING")
+
+        log = WebhookLog.objects.filter(direction='inbound').first()
+        self.assertIsNotNone(log)
+        self.assertEqual(log.tracking_id, self.student.tracking_id)
+        self.assertEqual(log.payload.get("processing_status"), "PROCESSING")
+        self.assertIsNotNone(log.encrypted_payload)
+        self.assertIn("encryptedData", log.encrypted_payload)
+
+    def test_inbound_kyc_status_webhook_encrypted(self):
+        """Test inbound KYC status webhook with AES-256-GCM encrypted payload."""
+        from twa.crypto import encrypt_twa_payload
+        url = reverse('twa:kyc_status_webhook')
+        plain_payload = {
+            "tracking_id": self.student.tracking_id,
+            "kyc_status": "FULL_KYC",
+            "remarks": "Video KYC completed encrypted"
+        }
+        enc_payload = encrypt_twa_payload(plain_payload)
+
+        response = self.client.post(
+            url,
+            data=json.dumps(enc_payload),
+            content_type='application/json',
+            REMOTE_ADDR='127.0.0.1'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.student.refresh_from_db()
+        self.assertEqual(self.student.kyc_status, "FULL_KYC")
+
+        log = WebhookLog.objects.filter(direction='inbound').first()
+        self.assertIsNotNone(log)
+        self.assertEqual(log.tracking_id, self.student.tracking_id)
+        self.assertEqual(log.payload.get("kyc_status"), "FULL_KYC")
+        self.assertIsNotNone(log.encrypted_payload)
+        self.assertIn("encryptedData", log.encrypted_payload)
 
     # 5. Masking PII in inbound webhook payloads (Constitution P6)
     def test_inbound_webhook_pii_masking(self):

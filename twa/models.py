@@ -14,9 +14,11 @@ class TWAApiLog(models.Model):
     tracking_id = models.CharField(max_length=50, db_index=True)
     endpoint = models.CharField(max_length=50) # 'sync_onboard' or 'status_pull'
     request_url = models.CharField(max_length=500)
-    request_payload = models.JSONField(null=True, blank=True) # mask auth token before save
+    request_payload = models.JSONField(null=True, blank=True)
+    encrypted_request_payload = models.JSONField(null=True, blank=True)
     http_status = models.SmallIntegerField(null=True, blank=True)
     response_payload = models.JSONField(null=True, blank=True)
+    encrypted_response_payload = models.JSONField(null=True, blank=True)
     success = models.BooleanField()
     error_message = models.TextField(null=True, blank=True)
     duration_ms = models.IntegerField()

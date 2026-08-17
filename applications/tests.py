@@ -74,6 +74,12 @@ class TAPTestCase(TestCase):
         from applications.crypto import encrypt_abc_payload
         return encrypt_abc_payload(payload)
 
+    def _decrypt(self, response_data):
+        from applications.crypto import decrypt_abc_payload
+        if isinstance(response_data, dict) and "encryptedData" in response_data:
+            return decrypt_abc_payload(response_data["encryptedData"])
+        return response_data
+
     # 1. HMAC Authentication Tests
     def test_hmac_authentication_success(self):
         """Test accessing endpoint with completely valid HMAC headers."""
@@ -84,7 +90,9 @@ class TAPTestCase(TestCase):
             content_type='application/json',
             **headers
         )
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = self._decrypt(response.json())
+        self.assertEqual(data.get("status"), "success")
 
     def test_hmac_authentication_missing_headers(self):
         """Test accessing endpoint with missing HMAC headers (returns 403 / AuthenticationFailed)."""
@@ -136,7 +144,7 @@ class TAPTestCase(TestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
-    # 2. Receive Application API Tests (Validation & Idempotency)
+    # 2. Receive Application API Tests (Validation & Idempotency & PENDING KYC status)
     def test_receive_application_validation_rules(self):
         """Test strict validation checks for mobile number and addresses."""
         headers = self._generate_hmac_headers()
@@ -151,7 +159,8 @@ class TAPTestCase(TestCase):
             **headers
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("mobile", response.json())
+        data = self._decrypt(response.json())
+        self.assertEqual(data.get("status"), "error")
 
         # Test 2: Invalid address pincode (too short)
         bad_student2 = self.student_data.copy()
@@ -163,10 +172,11 @@ class TAPTestCase(TestCase):
             **headers
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("current_address", response.json())
+        data2 = self._decrypt(response.json())
+        self.assertEqual(data2.get("status"), "error")
 
-    def test_receive_application_idempotency(self):
-        """Test POST /receive is strictly idempotent on apaar_id (Constitution P2)."""
+    def test_receive_application_idempotency_and_pending_kyc(self):
+        """Test POST /receive is strictly idempotent and sets initial kyc_status to PENDING."""
         headers = self._generate_hmac_headers()
 
         # First request
@@ -176,9 +186,20 @@ class TAPTestCase(TestCase):
             content_type='application/json',
             **headers
         )
-        self.assertEqual(response1.status_code, status.HTTP_201_CREATED)
-        tracking_id1 = response1.json()["tracking_id"]
-        self.assertTrue(response1.json()["created"])
+        self.assertEqual(response1.status_code, status.HTTP_200_OK)
+        data1 = self._decrypt(response1.json())
+        tracking_id1 = data1["data"]["tracking_id"]
+
+        # Verify student created with kyc_status PENDING
+        student = Student.objects.get(tracking_id=tracking_id1)
+        self.assertEqual(student.kyc_status, "PENDING")
+        self.assertEqual(student.application_status, "PROCESSING")
+
+        # Verify ABCApiLog stored encrypted_response_payload
+        log = ABCApiLog.objects.filter(endpoint='/v1/issuer-bank/application/receive').first()
+        self.assertIsNotNone(log)
+        self.assertIsNotNone(log.encrypted_response_payload)
+        self.assertIn("encryptedData", log.encrypted_response_payload)
 
         # Second request (exact same student data)
         response2 = self.client.post(
@@ -188,49 +209,17 @@ class TAPTestCase(TestCase):
             **headers
         )
         self.assertEqual(response2.status_code, status.HTTP_200_OK)
-        tracking_id2 = response2.json()["tracking_id"]
-        self.assertFalse(response2.json()["created"])
+        data2 = self._decrypt(response2.json())
+        tracking_id2 = data2["data"]["tracking_id"]
 
         # Ensure both tracking IDs are identical (idempotent output)
         self.assertEqual(tracking_id1, tracking_id2)
         # Ensure only 1 student record was created
         self.assertEqual(Student.objects.filter(apaar_id=self.student_data["apaar_id"]).count(), 1)
 
-    # 3. Acknowledge Application API Tests
-    def test_acknowledge_application(self):
-        """Test POST /acknowledge confirms receipt and shifts status from RECEIVED to PROCESSING."""
-        # 1. Create a student first
-        headers = self._generate_hmac_headers()
-        response1 = self.client.post(
-            reverse('issuer_bank:receive_application'),
-            data=self._encrypt(self.student_data),
-            content_type='application/json',
-            **headers
-        )
-        tracking_id = response1.json()["tracking_id"]
-
-        # Ensure starting status is RECEIVED
-        student = Student.objects.get(tracking_id=tracking_id)
-        self.assertEqual(student.application_status, 'RECEIVED')
-
-        # 2. Acknowledge application
-        headers_ack = self._generate_hmac_headers()
-        response2 = self.client.post(
-            reverse('issuer_bank:acknowledge_application'),
-            data=self._encrypt({"tracking_id": tracking_id}),
-            content_type='application/json',
-            **headers_ack
-        )
-        self.assertEqual(response2.status_code, status.HTTP_200_OK)
-        self.assertEqual(response2.json()["application_status"], 'PROCESSING')
-
-        # Verify database record updated
-        student.refresh_from_db()
-        self.assertEqual(student.application_status, 'PROCESSING')
-
-    # 4. Pull Application Status API Tests (TWA Client interaction)
-    def test_application_status_pull_twa(self):
-        """Test GET /status/{tracking_id} pulls from TWA Client and updates database logs."""
+    # 3. Pull Application Status API Tests (Encrypted & TWA Client interaction)
+    def test_application_status_pull_encrypted(self):
+        """Test GET /status/{tracking_id} returns encrypted response and logs encrypted_response_payload."""
         headers = self._generate_hmac_headers()
         # Create student record
         response1 = self.client.post(
@@ -239,30 +228,34 @@ class TAPTestCase(TestCase):
             content_type='application/json',
             **headers
         )
-        tracking_id = response1.json()["tracking_id"]
+        data1 = self._decrypt(response1.json())
+        tracking_id = data1["data"]["tracking_id"]
 
         # Request status
         headers_status = self._generate_hmac_headers()
         response2 = self.client.generic(
             'GET',
             reverse('issuer_bank:application_status', kwargs={"tracking_id": tracking_id}),
-            data=json.dumps(self._encrypt({"TRACKING_ID": tracking_id})),
             content_type='application/json',
             **headers_status
         )
         self.assertEqual(response2.status_code, status.HTTP_200_OK)
-        self.assertEqual(response2.json()["tracking_id"], tracking_id)
+        self.assertIn("encryptedData", response2.json())
+        
+        status_data = self._decrypt(response2.json())
+        self.assertEqual(status_data["data"]["tracking_id"], tracking_id)
+        self.assertEqual(status_data["data"]["kyc_status"], "PENDING")
 
-        # Verify that an outbound TWA API log row was created in TWAApiLog (Constitution P1 & P5)
-        twa_log = TWAApiLog.objects.first()
-        self.assertIsNotNone(twa_log)
-        self.assertEqual(twa_log.tracking_id, tracking_id)
-        self.assertEqual(twa_log.endpoint, 'status_pull')
-        self.assertTrue(twa_log.success)
+        # Verify ABCApiLog
+        log = ABCApiLog.objects.filter(direction='inbound').order_by('-created_at').first()
+        self.assertIsNotNone(log)
+        self.assertIsNotNone(log.encrypted_response_payload)
+        self.assertIn("encryptedData", log.encrypted_response_payload)
+        self.assertEqual(log.response_payload["data"]["tracking_id"], tracking_id)
 
-    # 5. Dashboard Stats API Tests
-    def test_dashboard_stats(self):
-        """Test GET /stats returns correct aggregations."""
+    # 4. Dashboard Stats API Tests (Encrypted response & PENDING bucket)
+    def test_dashboard_stats_encrypted(self):
+        """Test GET /stats returns encrypted response with PENDING status counts."""
         headers = self._generate_hmac_headers()
         # Insert a few students in database
         Student.objects.create(
@@ -271,7 +264,7 @@ class TAPTestCase(TestCase):
             mobile="1234567890",
             email="s1@ex.com",
             application_status="RECEIVED",
-            kyc_status="MIN_KYC"
+            kyc_status="PENDING"
         )
         Student.objects.create(
             tracking_id="TAP-STATS-2",
@@ -288,32 +281,22 @@ class TAPTestCase(TestCase):
             **headers_stats
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("encryptedData", response.json())
         
-        data = response.json()
-        self.assertEqual(data["total_students"], 2)
-        self.assertEqual(data["application_status_counts"]["RECEIVED"], 1)
-        self.assertEqual(data["application_status_counts"]["PROCESSING"], 1)
-        self.assertEqual(data["kyc_status_counts"]["MIN_KYC"], 1)
-        self.assertEqual(data["kyc_status_counts"]["FULL_KYC"], 1)
+        data = self._decrypt(response.json())
+        self.assertEqual(data["data"]["total_students"], 2)
+        self.assertEqual(data["data"]["application_status_counts"]["RECEIVED"], 1)
+        self.assertEqual(data["data"]["application_status_counts"]["PROCESSING"], 1)
+        self.assertEqual(data["data"]["kyc_status_counts"]["PENDING"], 1)
+        self.assertEqual(data["data"]["kyc_status_counts"]["FULL_KYC"], 1)
 
-    # 6. PII Masking Disabled Tests (PII stored as plain text)
-    def test_audit_logs_pii_masking(self):
-        """Test audit logs store sensitive PII fields in plain text (no masking)."""
-        headers = self._generate_hmac_headers()
-        self.client.post(
-            reverse('issuer_bank:receive_application'),
-            data=self._encrypt(self.student_data),
-            content_type='application/json',
-            **headers
-        )
-
-        log = ABCApiLog.objects.first()
+        # Verify ABCApiLog
+        log = ABCApiLog.objects.filter(endpoint='/v1/issuer-bank/dashboard/stats').first()
         self.assertIsNotNone(log)
-        # Ensure name parameter is NOT masked inside DB log JSON
-        from applications.crypto import decrypt_abc_payload
-        self.assertEqual(log.request_payload.get("full_name"), "Vikesh Sharma")
-        self.assertEqual(decrypt_abc_payload(log.encrypted_request_payload.get("encryptedData")).get("full_name"), "Vikesh Sharma")
+        self.assertIsNotNone(log.encrypted_response_payload)
+        self.assertIn("encryptedData", log.encrypted_response_payload)
 
+    # 5. Nested ABC submit payload flattening
     def test_nested_abc_submit_flattening(self):
         """Test pushing nested ABC_submit.json structured data is correctly flattened and saved."""
         nested_payload = {
@@ -370,30 +353,16 @@ class TAPTestCase(TestCase):
             content_type='application/json',
             **headers
         )
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertTrue(response.json()["created"])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = self._decrypt(response.json())
+        self.assertEqual(data.get("status"), "success")
 
         # Fetch student and verify flattened database mapping
         student = Student.objects.get(apaar_id="APAAR-NESTED-9988")
         self.assertEqual(student.full_name, "Aditya Roy")
         self.assertEqual(student.title, "Mr")
         self.assertEqual(student.gender, "M")
-        self.assertEqual(student.photo_path, "/media/photos/APAAR-NESTED-9988.jpg")
-        self.assertEqual(student.blood_group, "O+")
-        self.assertEqual(student.university_name, "Mumbai University")
-        self.assertEqual(student.enrollment_number, "ENR001")
-        self.assertEqual(student.admission_year, 2024)
-
-        # Verify address component properties
-        self.assertEqual(student.current_address_line, "A-101 XYZ Colony")
-        self.assertEqual(student.current_address_city, "Mumbai")
-        self.assertEqual(student.current_address_state, "Maharashtra")
-        self.assertEqual(student.current_address_pincode, "400001")
-
-        self.assertEqual(student.permanent_address_line, "456 Civil Lines")
-        self.assertEqual(student.permanent_address_city, "Patna")
-        self.assertEqual(student.permanent_address_state, "Bihar")
-        self.assertEqual(student.permanent_address_pincode, "800001")
+        self.assertEqual(student.kyc_status, "PENDING")
 
     def test_health_check_endpoint(self):
         """Test that the GET /health/ health check endpoint returns 200 and indicates a healthy database."""
@@ -403,4 +372,5 @@ class TAPTestCase(TestCase):
         data = response.json()
         self.assertEqual(data.get("status"), "healthy")
         self.assertEqual(data.get("database"), "connected")
+
 

@@ -86,9 +86,10 @@ class LoggingAPIView(APIView):
             else:
                 response_body = {'_raw_content': str(response.content)[:1000]}
 
-            # If request was encrypted, ABC expects the response to be encrypted too
-            drf_request = getattr(self, 'request', None)
-            if hasattr(drf_request, '_decrypted_data') and isinstance(response_body, dict):
+            # Always encrypt response for ABC if encryption key is configured
+            from django.conf import settings
+            abc_key = getattr(settings, 'ABC_ENCRYPTION_KEY', None)
+            if abc_key and isinstance(response_body, dict):
                 from applications.crypto import encrypt_abc_payload
                 try:
                     encrypted = encrypt_abc_payload(response_body)
@@ -127,10 +128,9 @@ class LoggingAPIView(APIView):
                 log.request_payload = make_json_safe(payload)
                 
             log.response_payload = make_json_safe(response_body)
-            if hasattr(response_body, '_encrypted_response') or hasattr(response, '_encrypted_response'):
-                enc_resp = getattr(response, '_encrypted_response', None)
-                if enc_resp:
-                    log.encrypted_response_payload = make_json_safe(enc_resp)
+            enc_resp = getattr(response, '_encrypted_response', None) if 'response' in locals() else None
+            if enc_resp:
+                log.encrypted_response_payload = make_json_safe(enc_resp)
             log.http_status = http_status_code
             log.success = success
 
@@ -366,11 +366,11 @@ class ReceiveApplicationView(LoggingAPIView):
                     "errors": [{"field": "APPLICATION_REFERENCE_NUMBER", "message": "APPLICATION_REFERENCE_NUMBER is required"}]
                 }, status=status.HTTP_400_BAD_REQUEST)
 
-            # Save student record and automatically transition to PROCESSING
+            # Save student record and automatically transition to PROCESSING with kyc_status PENDING
             student = serializer.save(
                 tracking_id=tracking_id,
                 application_status='PROCESSING',
-                kyc_status='MIN_KYC'
+                kyc_status='PENDING'
             )
 
             return Response({
@@ -505,6 +505,7 @@ class DashboardStatsView(LoggingAPIView):
                 status_dict[s_val] = item['count']
 
         kyc_dict = {
+            'PENDING': 0,
             'MIN_KYC': 0,
             'FULL_KYC': 0,
             'FAILED': 0,

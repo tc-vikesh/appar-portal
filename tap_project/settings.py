@@ -143,6 +143,7 @@ ABC_KYC_STATUS_WEBHOOK_URL = env('ABC_KYC_STATUS_WEBHOOK_URL', default='')
 # TWA Integration Security Settings
 TWA_SYNC_URL = env('TWA_SYNC_URL', default='https://api.stage.transcorpint.com/user/external/onboard')
 TWA_AUTH_TOKEN = env('TWA_AUTH_TOKEN', default='')
+TWA_ENCRYPTION_KEY = env('TWA_ENCRYPTION_KEY', default=env('ABC_ENCRYPTION_KEY', default=''))
 TWA_WEBHOOK_ALLOWED_IPS = env.list('TWA_WEBHOOK_ALLOWED_IPS', default=['127.0.0.1'])
 
 # Media files configurations for photo storage

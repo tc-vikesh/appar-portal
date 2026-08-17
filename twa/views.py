@@ -104,16 +104,23 @@ class WebhookLoggingAPIView(APIView):
                 except Exception:
                     pass
 
-            # Masking disabled as requested
-            log.payload = make_json_safe(payload)
+            if isinstance(payload, dict) and 'encryptedData' in payload:
+                log.encrypted_payload = make_json_safe(payload)
+                if hasattr(drf_request, '_decrypted_data'):
+                    log.payload = make_json_safe(drf_request._decrypted_data)
+                else:
+                    log.payload = None
+            else:
+                log.payload = make_json_safe(payload)
 
             # Measure duration and complete audit save in finally block (Constitution P1)
             log.duration_ms = int((time.monotonic() - start_time) * 1000)
 
             # Link log row to Student record
+            active_data = getattr(drf_request, '_decrypted_data', None) or payload
             tracking_id = None
-            if isinstance(payload, dict) and 'tracking_id' in payload:
-                tracking_id = payload['tracking_id']
+            if isinstance(active_data, dict) and 'tracking_id' in active_data:
+                tracking_id = active_data['tracking_id']
             
             if tracking_id:
                 log.tracking_id = tracking_id
@@ -134,9 +141,21 @@ class ApplicationStatusWebhookView(WebhookLoggingAPIView):
     TWA pushes processing status updates for a student.
     """
     def post(self, request, *args, **kwargs):
-        tracking_id = request.data.get('tracking_id')
-        processing_status = request.data.get('processing_status')
-        remarks = request.data.get('remarks')
+        data = request.data
+        if isinstance(data, dict) and 'encryptedData' in data:
+            from twa.crypto import decrypt_twa_payload
+            try:
+                data = decrypt_twa_payload(data['encryptedData'])
+                request._decrypted_data = data
+            except Exception as e:
+                return Response(
+                    {"error": f"Decryption failed: {str(e)}"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        tracking_id = data.get('tracking_id') if isinstance(data, dict) else None
+        processing_status = data.get('processing_status') if isinstance(data, dict) else None
+        remarks = data.get('remarks') if isinstance(data, dict) else None
 
         if not tracking_id or not processing_status:
             return Response(
@@ -175,9 +194,21 @@ class KYCStatusWebhookView(WebhookLoggingAPIView):
     TWA pushes kyc status updates for a student.
     """
     def post(self, request, *args, **kwargs):
-        tracking_id = request.data.get('tracking_id')
-        kyc_status_val = request.data.get('kyc_status')
-        remarks = request.data.get('remarks')
+        data = request.data
+        if isinstance(data, dict) and 'encryptedData' in data:
+            from twa.crypto import decrypt_twa_payload
+            try:
+                data = decrypt_twa_payload(data['encryptedData'])
+                request._decrypted_data = data
+            except Exception as e:
+                return Response(
+                    {"error": f"Decryption failed: {str(e)}"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        tracking_id = data.get('tracking_id') if isinstance(data, dict) else None
+        kyc_status_val = data.get('kyc_status') if isinstance(data, dict) else None
+        remarks = data.get('remarks') if isinstance(data, dict) else None
 
         if not tracking_id or not kyc_status_val:
             return Response(
@@ -208,3 +239,4 @@ class KYCStatusWebhookView(WebhookLoggingAPIView):
             "kyc_status": student.kyc_status,
             "message": "Student KYC status successfully updated from TWA webhook."
         }, status=status.HTTP_200_OK)
+

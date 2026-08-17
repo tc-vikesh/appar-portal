@@ -75,7 +75,14 @@ class PortalTestCase(TestCase):
 
         response = self.client.post(
             reverse('portal:aadhaar_send_otp', kwargs={'tracking_id': self.student.tracking_id}),
-            data=json.dumps({"aadhaar_number": "123456789012", "consent": True}),
+            data=json.dumps({
+                "aadhaar_number": "123456789012",
+                "consent_aadhaar_ovd": True,
+                "consent_ckycr": True,
+                "consent_address_mismatch": True,
+                "consent_kyc_ppi": True,
+                "consent_terms_conditions": True
+            }),
             content_type='application/json'
         )
         self.assertEqual(response.status_code, 200)
@@ -93,16 +100,26 @@ class PortalTestCase(TestCase):
         # Test 1: Missing consent
         response1 = self.client.post(
             reverse('portal:aadhaar_send_otp', kwargs={'tracking_id': self.student.tracking_id}),
-            data=json.dumps({"aadhaar_number": "123456789012", "consent": False}),
+            data=json.dumps({
+                "aadhaar_number": "123456789012",
+                "consent_aadhaar_ovd": False
+            }),
             content_type='application/json'
         )
         self.assertEqual(response1.status_code, 400)
-        self.assertIn("consent", response1.json()["error"])
+        self.assertIn("consents", response1.json()["error"])
 
         # Test 2: Invalid Aadhaar length
         response2 = self.client.post(
             reverse('portal:aadhaar_send_otp', kwargs={'tracking_id': self.student.tracking_id}),
-            data=json.dumps({"aadhaar_number": "12345", "consent": True}),
+            data=json.dumps({
+                "aadhaar_number": "12345",
+                "consent_aadhaar_ovd": True,
+                "consent_ckycr": True,
+                "consent_address_mismatch": True,
+                "consent_kyc_ppi": True,
+                "consent_terms_conditions": True
+            }),
             content_type='application/json'
         )
         self.assertEqual(response2.status_code, 400)
@@ -220,17 +237,11 @@ class PortalTestCase(TestCase):
         self.student.kyc_status = "MIN_KYC"
         self.student.save()
 
-        CMSPage.objects.create(
-            slug="success-page",
-            title="S1 Success",
-            content="Download instruction mock text"
-        )
-
         response = self.client.get(
             reverse('portal:success', kwargs={'tracking_id': self.student.tracking_id})
         )
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "S1 Success")
+        self.assertContains(response, "Registration Successful!")
 
     @patch('requests.post')
     def test_aadhaar_client_no_masking(self, mock_post):

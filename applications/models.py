@@ -17,6 +17,7 @@ class Student(models.Model):
     ]
 
     KYC_STATUS_CHOICES = [
+        ('PENDING', 'PENDING'),
         ('MIN_KYC', 'MIN_KYC'),
         ('FULL_KYC', 'FULL_KYC'),
         ('FAILED', 'FAILED'),
@@ -57,7 +58,7 @@ class Student(models.Model):
     kyc_status = models.CharField(
         max_length=30,
         choices=KYC_STATUS_CHOICES,
-        default='MIN_KYC'
+        default='PENDING'
     )
     m2p_entity_id = models.CharField(max_length=100, null=True, blank=True)
     m2p_kit_no = models.CharField(max_length=100, null=True, blank=True)

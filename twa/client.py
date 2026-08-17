@@ -161,6 +161,18 @@ class TWAClient:
             ]
         }
 
+        from twa.crypto import encrypt_twa_payload, decrypt_twa_payload
+        from applications.views import make_json_safe
+
+        # Encrypt Payload
+        encrypted_payload = None
+        try:
+            encrypted_payload = encrypt_twa_payload(payload)
+            request_body = encrypted_payload
+        except Exception as enc_err:
+            # Fallback to plain payload if encryption is not configured
+            request_body = payload
+
         # Initialize log row BEFORE network call
         log = TWAApiLog(
             student=student,
@@ -172,21 +184,30 @@ class TWAClient:
 
         start = time.monotonic()
         try:
-            # PII discipline: mask auth token and sensitive payloads in logging
-            response = requests.post(url, json=payload, headers=headers, timeout=15)
+            response = requests.post(url, json=request_body, headers=headers, timeout=15)
             log.http_status = response.status_code
 
             try:
-                body = response.json()
+                raw_body = response.json()
             except ValueError:
-                body = {"_raw_body": response.text[:1000]}
+                raw_body = {"_raw_body": response.text[:1000]}
 
-            log.response_payload = self._mask_payload(body)
+            # Check if response body is encrypted
+            body = raw_body
+            if isinstance(raw_body, dict) and 'encryptedData' in raw_body:
+                log.encrypted_response_payload = make_json_safe(raw_body)
+                try:
+                    decrypted_resp = decrypt_twa_payload(raw_body['encryptedData'])
+                    body = decrypted_resp
+                except Exception:
+                    body = raw_body
+
+            log.response_payload = make_json_safe(body)
 
             success = 200 <= response.status_code < 300
             log.success = success
             if not success:
-                log.error_message = body.get("error") or body.get("message") or "Non-success TWA response"
+                log.error_message = (body.get("error") or body.get("message") or "Non-success TWA response") if isinstance(body, dict) else "Non-success TWA response"
 
             return body
 
@@ -196,7 +217,10 @@ class TWAClient:
             raise exc
 
         finally:
-            log.request_payload = self._mask_payload(payload)
+            log.request_payload = make_json_safe(payload)
+            if encrypted_payload:
+                log.encrypted_request_payload = make_json_safe(encrypted_payload)
             log.duration_ms = int((time.monotonic() - start) * 1000)
             log.save() # ALWAYS save log row
+
 
