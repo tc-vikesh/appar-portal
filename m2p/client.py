@@ -1,32 +1,85 @@
 import time
+import json
 import requests
 from django.conf import settings
 from m2p.models import M2PApiLog
 
 class M2PClient:
     """
-    Client for interacting with the M2P KYC UAT endpoints.
+    Client for interacting with the M2P UAT/Prod endpoints.
     Per Constitution P1, all outbound calls are logged in M2PApiLog inside a finally block.
-    Per Constitution P6, all sensitive data (OTPs and PANs) is masked in database log columns.
     """
     def __init__(self):
         self.base_url = getattr(settings, 'M2P_BASE_URL', 'https://kycuat.yappay.in')
         self.tenant = getattr(settings, 'M2P_TENANT', 'TRANSCORP')
 
-    def _mask_payload(self, payload):
-        """Returns the payload unmasked (masking disabled as requested)."""
-        return payload
+    def _post(self, url, request_payload, student, log):
+        encryption_enabled = getattr(settings, 'M2P_ENCRYPTION_ENABLED', False)
+        headers = {
+            "TENANT": self.tenant,
+            "Content-Type": "application/json"
+        }
+        log.request_headers = headers
+
+        if encryption_enabled:
+            from m2p.crypto import M2PCryptoHelper
+            crypto = M2PCryptoHelper()
+            
+            # Encrypt request payload
+            plain_json_str = json.dumps(request_payload)
+            # Pass the businessType as the entity envelope value to match M2P requirements
+            biz_type = request_payload.get("businessType", "TCAPAAR")
+            encrypted_payload = crypto.encrypt_request(plain_json_str, entity_value=biz_type)
+            
+            # Perform POST request with encrypted envelope
+            response = requests.post(url, json=encrypted_payload, headers=headers, timeout=15)
+            log.http_status = response.status_code
+            
+            try:
+                enc_response_body = response.json()
+            except ValueError:
+                enc_response_body = {"_raw_body": response.text[:1000]}
+                
+            log.encrypted_request_payload = encrypted_payload
+            log.encrypted_response_payload = enc_response_body
+            
+            if response.status_code == 200:
+                try:
+                    # Decrypt response
+                    decrypted_json_str = crypto.decrypt_response(enc_response_body)
+                    body = json.loads(decrypted_json_str)
+                    log.response_payload = body
+                    return body
+                except Exception as dec_exc:
+                    # Fallback: if decryption fails, check if the response was actually an unencrypted error payload
+                    if isinstance(enc_response_body, dict) and ("exception" in enc_response_body or "error" in enc_response_body or "message" in enc_response_body):
+                        log.response_payload = enc_response_body
+                        return enc_response_body
+                    raise ValueError(f"Failed to decrypt M2P response: {str(dec_exc)}")
+            else:
+                log.response_payload = enc_response_body
+                return enc_response_body
+        else:
+            # Plain text flow
+            response = requests.post(url, json=request_payload, headers=headers, timeout=15)
+            log.http_status = response.status_code
+            
+            try:
+                body = response.json()
+            except ValueError:
+                body = {"_raw_body": response.text[:1000]}
+                
+            log.response_payload = body
+            log.encrypted_request_payload = None
+            log.encrypted_response_payload = None
+            return body
 
     def generate_otp(self, student):
         """
         POST /kyc/customer/generate/otp
         Calls M2P generate-OTP service.
         """
-        url = f"{self.base_url}/kyc/customer/generate/otp"
-        headers = {
-            "TENANT": self.tenant,
-            "Content-Type": "application/json"
-        }
+        url = f"{self.base_url.rstrip('/')}/kyc/customer/generate/otp"
         request_payload = {
             "entityId": student.apaar_id,
             "mobileNumber": f"+91{student.mobile}",
@@ -40,7 +93,6 @@ class M2PClient:
             apaar_id=student.apaar_id,
             endpoint="generate_otp",
             request_url=url,
-            request_headers=headers,
         )
 
         start = time.monotonic()
@@ -53,21 +105,10 @@ class M2PClient:
                 log.success = True
                 return body
 
-            # UAT plain text call (as per context decision)
-            response = requests.post(url, json=request_payload, headers=headers, timeout=15)
-            log.http_status = response.status_code
+            body = self._post(url, request_payload, student, log)
 
-            try:
-                body = response.json()
-            except ValueError:
-                body = {"_raw_body": response.text[:1000]}
-
-            log.response_payload = self._mask_payload(body)
-
-            # Determine success based on response schema
-            # Example M2P success: 200 OK with success indicator in body
             success = (
-                response.status_code == 200 and 
+                log.http_status == 200 and 
                 (body.get("result", {}).get("success") is True or body.get("success") is True)
             )
             log.success = success
@@ -83,7 +124,7 @@ class M2PClient:
 
         finally:
             # Measure duration and complete audit save in finally block (Constitution P1)
-            log.request_payload = self._mask_payload(request_payload)
+            log.request_payload = request_payload
             log.duration_ms = int((time.monotonic() - start) * 1000)
             log.save()
 
@@ -92,11 +133,7 @@ class M2PClient:
         POST /kyc/v2/register
         Registers customer (MIN KYC) using OTP and Aadhaar number.
         """
-        url = f"{self.base_url}/kyc/v2/register"
-        headers = {
-            "TENANT": self.tenant,
-            "Content-Type": "application/json"
-        }
+        url = f"{self.base_url.rstrip('/')}/kyc/v2/register"
         
         # Parse full_name into first, middle, last name blocks
         full_name = student.full_name or ""
@@ -205,7 +242,6 @@ class M2PClient:
             apaar_id=student.apaar_id,
             endpoint="register",
             request_url=url,
-            request_headers=headers,
         )
 
         start = time.monotonic()
@@ -225,20 +261,11 @@ class M2PClient:
                 log.success = True
                 return body
 
-            # UAT plain text call (as per context decision)
-            response = requests.post(url, json=request_payload, headers=headers, timeout=15)
-            log.http_status = response.status_code
-
-            try:
-                body = response.json()
-            except ValueError:
-                body = {"_raw_body": response.text[:1000]}
-
-            log.response_payload = self._mask_payload(body)
+            body = self._post(url, request_payload, student, log)
 
             result_block = body.get("result") or {}
             success = (
-                response.status_code == 200 and
+                log.http_status == 200 and
                 not body.get("exception") and
                 (
                     body.get("success") is True or
@@ -261,6 +288,6 @@ class M2PClient:
 
         finally:
             # Measure duration and complete audit save in finally block (Constitution P1)
-            log.request_payload = self._mask_payload(request_payload)
+            log.request_payload = request_payload
             log.duration_ms = int((time.monotonic() - start) * 1000)
             log.save()

@@ -369,3 +369,275 @@ class LockedView(View):
         if not student.otp_locked:
             return redirect(reverse('portal:landing', kwargs={'tracking_id': tracking_id}))
         return render(request, 'portal/locked.html', {'student': student})
+
+
+class M2PCryptoTestView(View):
+    """
+    GET /portal/test-m2p-crypto/
+    Diagnostic view to run side-by-side comparison of Python and Node encryption,
+    and to test live endpoint connections for all permutations.
+    """
+    def get(self, request):
+        import subprocess
+        import json
+        import requests
+        from django.conf import settings
+        from m2p.crypto import M2PCryptoHelper
+        from cryptography.hazmat.primitives.serialization import load_der_public_key
+
+        student = Student.objects.first()
+        if not student:
+            student_apaar_id = "Vikes81643"
+            student_mobile = "9045781643"
+        else:
+            student_apaar_id = student.apaar_id
+            student_mobile = student.mobile
+
+        # Fixed key and IV to compare raw ciphertext values
+        fixed_key = "1234123412341278"
+        fixed_iv = "1234123412341279"
+
+        # Payloads to test
+        payloads = {
+            "Payload_1_Standard_UAT_Plaintext_Format": {
+                "entityId": student_apaar_id,
+                "mobileNumber": f"+91{student_mobile}",
+                "businessType": "TCAPAAR",
+                "entityType": "CUSTOMER"
+            },
+            "Payload_2_Java_Mobile_Only": {
+                "entityId": student_mobile
+            },
+            "Payload_3_Java_Mobile_With_Country_Code": {
+                "entityId": f"+91{student_mobile}"
+            },
+            "Payload_4_Apaar_ID_Only": {
+                "entityId": student_apaar_id
+            }
+        }
+
+        crypto = M2PCryptoHelper()
+        
+        # 1. Run side-by-side comparison for Payload 1
+        test_payload_str = json.dumps(payloads["Payload_1_Standard_UAT_Plaintext_Format"])
+        
+        try:
+            node_res = subprocess.run(
+                ["node", "test_crypto.js", test_payload_str, fixed_key, fixed_iv],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            node_json = json.loads(node_res.stdout)
+        except Exception as e:
+            node_json = {"error": f"Node.js failed: {str(e)}", "stderr": getattr(e, 'stderr', '')}
+
+        try:
+            py_body = crypto.aes_encrypt(test_payload_str, fixed_key, fixed_iv)
+            py_key = crypto.encrypt_key(fixed_key)
+            py_token = crypto.sign_json(test_payload_str)
+            py_entity = crypto.encrypt_key("TRANSCORP")
+            
+            # Verify signatures using business public key
+            import base64
+            from cryptography.hazmat.primitives import hashes
+            from cryptography.hazmat.primitives.asymmetric import padding as asymmetric_padding
+            
+            node_token = node_json.get("token", "")
+            node_sig_ok = False
+            node_sig_err = None
+            if node_token:
+                try:
+                    with open("D:\\Apaar\\M2P_keys\\node\\prepaid.transcorpint.com.openssl", "rb") as f:
+                        bus_pub_key = load_der_public_key(f.read())
+                    bus_pub_key.verify(
+                        base64.b64decode(node_token),
+                        test_payload_str.encode('utf-8'),
+                        asymmetric_padding.PKCS1v15(),
+                        hashes.SHA1()
+                    )
+                    node_sig_ok = True
+                except Exception as ve:
+                    node_sig_err = str(ve)
+                    
+            py_sig_ok = False
+            py_sig_err = None
+            if py_token:
+                try:
+                    with open("D:\\Apaar\\M2P_keys\\node\\prepaid.transcorpint.com.openssl", "rb") as f:
+                        bus_pub_key = load_der_public_key(f.read())
+                    bus_pub_key.verify(
+                        base64.b64decode(py_token),
+                        test_payload_str.encode('utf-8'),
+                        asymmetric_padding.PKCS1v15(),
+                        hashes.SHA1()
+                    )
+                    py_sig_ok = True
+                except Exception as ve:
+                    py_sig_err = str(ve)
+
+            py_json = {
+                "body": py_body,
+                "key": py_key,
+                "token": py_token,
+                "entity": py_entity,
+                "refNo": fixed_iv,
+                "sig_ok": py_sig_ok,
+                "sig_error": py_sig_err
+            }
+        except Exception as e:
+            py_json = {"error": f"Python encryption failed: {str(e)}"}
+            node_sig_ok = False
+            node_sig_err = None
+
+        comparisons = {
+            "aes_ciphertext_match": py_json.get("body") == node_json.get("body") if "body" in node_json else False,
+            "signature_match": py_json.get("token") == node_json.get("token") if "token" in node_json else False,
+            "node_signature_verified_by_python_pubkey": node_sig_ok,
+            "node_signature_error": node_sig_err
+        }
+
+        live_results = []
+
+        # Header sets to try
+        header_sets = {
+            "Headers_Basic": {
+                "TENANT": "TRANSCORP",
+                "Content-Type": "application/json"
+            },
+            "Headers_With_Partner_Auth": {
+                "TENANT": "TRANSCORP",
+                "Content-Type": "application/json",
+                "partnerId": "TRANSCORP",
+                "partnerToken": "Basic VFJBTlNDT1JQ"
+            },
+            "Headers_With_Partner_And_Basic_Auth": {
+                "TENANT": "TRANSCORP",
+                "Content-Type": "application/json",
+                "partnerId": "TRANSCORP",
+                "partnerToken": "Basic VFJBTlNDT1JQ",
+                "Authorization": "Basic YWRtaW46YWRtaW4="
+            }
+        }
+
+        # 2. Run Live Calls for all permutations
+        live_results = []
+        
+        # Test permutations for generate_otp
+        urls_otp = [
+            "https://ssltest.yappay.in/Yappay/kyc/customer/generate/otp",
+            "https://ssltest.yappay.in/kyc/customer/generate/otp"
+        ]
+        
+        # Test permutations for register
+        urls_register = [
+            "https://ssltest.yappay.in/Yappay/kyc/v2/register",
+            "https://ssltest.yappay.in/kyc/v2/register"
+        ]
+
+        # Fetch a dummy register request payload
+        with open("d:\\Apaar\\Dev\\codebase\\m2p_register_request.json", "r") as f:
+            register_payload = json.load(f)
+
+        entity_keys = ["TRANSCORP", "TRANSCORPMIN", "MSWIPE"]
+
+        for url in urls_otp:
+            for p_name, payload in payloads.items():
+                for h_name, headers in header_sets.items():
+                    for ek in entity_keys:
+                        test_case_name = f"OTP | URL: {url} | Payload: {p_name} | Headers: {h_name} | Entity: {ek}"
+                        try:
+                            # Override entity key in settings
+                            settings.M2P_ENTITY_KEY = ek
+                            crypto = M2PCryptoHelper()
+                            
+                            plain_json_str = json.dumps(payload)
+                            encrypted_payload = crypto.encrypt_request(plain_json_str)
+                            resp = requests.post(url, json=encrypted_payload, headers=headers, timeout=10)
+                            
+                            resp_json = None
+                            try:
+                                resp_json = resp.json()
+                            except ValueError:
+                                resp_json = {"_raw_text": resp.text[:500]}
+
+                            decrypted_body = None
+                            decryption_success = False
+                            decryption_error = None
+                            
+                            if resp.status_code == 200 and resp_json:
+                                try:
+                                    decrypted_body = crypto.decrypt_response(resp_json)
+                                    decryption_success = True
+                                except Exception as dec_err:
+                                    decryption_error = str(dec_err)
+
+                            live_results.append({
+                                "test_case": test_case_name,
+                                "http_status": resp.status_code,
+                                "raw_response": resp_json,
+                                "decrypted_body": decrypted_body,
+                                "decryption_success": decryption_success,
+                                "decryption_error": decryption_error
+                            })
+                        except Exception as exc:
+                            live_results.append({
+                                "test_case": test_case_name,
+                                "error": f"{type(exc).__name__}: {str(exc)}"
+                            })
+
+        for url in urls_register:
+            for h_name, headers in header_sets.items():
+                for ek in entity_keys:
+                    test_case_name = f"REGISTER | URL: {url} | Headers: {h_name} | Entity: {ek}"
+                    try:
+                        settings.M2P_ENTITY_KEY = ek
+                        crypto = M2PCryptoHelper()
+                        
+                        plain_json_str = json.dumps(register_payload)
+                        encrypted_payload = crypto.encrypt_request(plain_json_str)
+                        resp = requests.post(url, json=encrypted_payload, headers=headers, timeout=10)
+                        
+                        resp_json = None
+                        try:
+                            resp_json = resp.json()
+                        except ValueError:
+                            resp_json = {"_raw_text": resp.text[:500]}
+
+                        decrypted_body = None
+                        decryption_success = False
+                        decryption_error = None
+                        
+                        if resp.status_code == 200 and resp_json:
+                            try:
+                                decrypted_body = crypto.decrypt_response(resp_json)
+                                decryption_success = True
+                            except Exception as dec_err:
+                                decryption_error = str(dec_err)
+
+                        live_results.append({
+                            "test_case": test_case_name,
+                            "http_status": resp.status_code,
+                            "raw_response": resp_json,
+                            "decrypted_body": decrypted_body,
+                            "decryption_success": decryption_success,
+                            "decryption_error": decryption_error
+                        })
+                    except Exception as exc:
+                        live_results.append({
+                            "test_case": test_case_name,
+                            "error": f"{type(exc).__name__}: {str(exc)}"
+                        })
+
+
+        return JsonResponse({
+            "status": "completed",
+            "node_output": node_json,
+            "python_output": py_json,
+            "comparisons": comparisons,
+            "live_results": live_results
+        })
+
+
+
+
