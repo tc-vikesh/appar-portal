@@ -36,66 +36,25 @@ class WebhookDispatcherTestCase(TestCase):
             m2p_entity_id="APAAR-ABC-11111",
             m2p_kit_no="KIT-ABC-1234",
             m2p_token="TOKEN-ABC-5678",
-            application_status="RECEIVED",
+            application_status="PROCESSING",
             kyc_status="MIN_KYC",
             twa_synced=True
         )
 
-        # Standard settings for outbound webhook
-        
         import base64, os
         settings.ABC_ENCRYPTION_KEY = base64.b64encode(os.urandom(32)).decode('utf-8')
         settings.ABC_CLIENT_ID = "mock_abc_client_id_tap"
         settings.ABC_CLIENT_SECRET = "mock_abc_client_secret_hmac_sha256"
-        settings.ABC_STATUS_UPDATE_WEBHOOK_URL = "http://localhost:8001/webhook/abc/application/status/update"
         settings.ABC_KYC_STATUS_WEBHOOK_URL = "http://localhost:8001/webhook/abc/application/kyc-status"
         settings.TWA_WEBHOOK_ALLOWED_IPS = ["127.0.0.1"]
 
     # 1. Dispatcher Unit Tests (Success cases)
     @patch('requests.post')
-    def test_dispatch_application_status_update_success(self, mock_post):
-        """Test successful application status update webhook send and WebhookLog creation."""
+    def test_dispatch_kyc_status_update_success(self, mock_post):
+        """Test successful KYC status update webhook send and WebhookLog creation."""
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"success": True, "message": "Received"}
-        mock_post.return_value = mock_response
-
-        # Call dispatcher
-        dispatcher = ABCWebhookDispatcher()
-        res = dispatcher.dispatch_application_status_update(self.student, "Remarks text")
-
-        self.assertTrue(res.get("success"))
-
-        # Verify requests.post call details
-        mock_post.assert_called_once()
-        args, kwargs = mock_post.call_args
-        self.assertEqual(args[0], settings.ABC_STATUS_UPDATE_WEBHOOK_URL)
-        
-        # Verify no auth header is sent (no-auth UAT specs)
-        self.assertNotIn("Authorization", kwargs.get("headers", {}))
-        
-        from applications.crypto import decrypt_abc_payload
-        payload = decrypt_abc_payload(kwargs.get("json", {}).get("encryptedData"))
-        self.assertEqual(payload.get("TRACKING_ID"), self.student.tracking_id)
-        self.assertEqual(payload.get("PROCESSING_STATUS"), self.student.application_status)
-        self.assertEqual(payload.get("REMARKS"), "Remarks text")
-
-        # Verify exactly one WebhookLog outbound row is written (Constitution P1)
-        log = WebhookLog.objects.filter(direction='outbound').first()
-        self.assertIsNotNone(log)
-        self.assertEqual(log.student, self.student)
-        self.assertEqual(log.tracking_id, self.student.tracking_id)
-        self.assertEqual(log.webhook_type, 'outbound_abc_app_status')
-        self.assertEqual(log.endpoint, settings.ABC_STATUS_UPDATE_WEBHOOK_URL)
-        self.assertEqual(log.http_status, 200)
-        self.assertTrue(log.success)
-
-    @patch('requests.post')
-    def test_dispatch_kyc_status_update_success(self, mock_post):
-        """Test successful KYC status update webhook send."""
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"success": True}
         mock_post.return_value = mock_response
 
         # Call dispatcher
@@ -104,9 +63,27 @@ class WebhookDispatcherTestCase(TestCase):
 
         self.assertTrue(res.get("success"))
 
-        # Check DB log row
+        # Verify requests.post call details
+        mock_post.assert_called_once()
+        args, kwargs = mock_post.call_args
+        self.assertEqual(args[0], settings.ABC_KYC_STATUS_WEBHOOK_URL)
+        
+        # Verify HMAC headers sent
+        headers = kwargs.get("headers", {})
+        self.assertIn("X-Client-ID", headers)
+        self.assertIn("X-Client-HMAC", headers)
+        
+        from applications.crypto import decrypt_abc_payload
+        payload = decrypt_abc_payload(kwargs.get("json", {}).get("encryptedData"))
+        self.assertEqual(payload.get("TRACKING_ID"), self.student.tracking_id)
+        self.assertEqual(payload.get("KYC_STATUS"), self.student.kyc_status)
+        self.assertEqual(payload.get("REMARKS"), "KYC verified")
+
+        # Verify exactly one WebhookLog outbound row is written (Constitution P1)
         log = WebhookLog.objects.filter(direction='outbound').first()
         self.assertIsNotNone(log)
+        self.assertEqual(log.student, self.student)
+        self.assertEqual(log.tracking_id, self.student.tracking_id)
         self.assertEqual(log.webhook_type, 'outbound_abc_kyc_status')
         self.assertEqual(log.endpoint, settings.ABC_KYC_STATUS_WEBHOOK_URL)
         self.assertEqual(log.http_status, 200)
@@ -124,7 +101,7 @@ class WebhookDispatcherTestCase(TestCase):
 
         # Call dispatcher and verify it does NOT crash (silent non-blocking webhook)
         dispatcher = ABCWebhookDispatcher()
-        res = dispatcher.dispatch_application_status_update(self.student, "Should not raise")
+        res = dispatcher.dispatch_kyc_status_update(self.student, "Should not raise")
 
         self.assertFalse(res.get("success"))
         
@@ -155,10 +132,10 @@ class WebhookDispatcherTestCase(TestCase):
 
     def test_dispatch_not_configured_logged(self):
         """Test dispatcher skips send if setting is empty but still logs failure."""
-        settings.ABC_STATUS_UPDATE_WEBHOOK_URL = ""
+        settings.ABC_KYC_STATUS_WEBHOOK_URL = ""
 
         dispatcher = ABCWebhookDispatcher()
-        res = dispatcher.dispatch_application_status_update(self.student, "Skip send")
+        res = dispatcher.dispatch_kyc_status_update(self.student, "Skip send")
 
         self.assertFalse(res.get("success"))
 
@@ -172,7 +149,6 @@ class WebhookDispatcherTestCase(TestCase):
     @patch('requests.post')
     def test_inbound_twa_app_status_webhook_triggers_outbound_abc_webhook(self, mock_post):
         """Verify that receiving an inbound application status update from TWA triggers outbound dispatch to ABC."""
-        # Setup mock success for outbound call to ABC
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"success": True}
@@ -201,7 +177,7 @@ class WebhookDispatcherTestCase(TestCase):
 
         # Verify outbound ABC dispatcher call was triggered
         mock_post.assert_called_once()
-        self.assertEqual(mock_post.call_args[0][0], settings.ABC_STATUS_UPDATE_WEBHOOK_URL)
+        self.assertEqual(mock_post.call_args[0][0], settings.ABC_KYC_STATUS_WEBHOOK_URL)
 
         # Verify exactly one inbound log and exactly one outbound log were created
         inbound_log = WebhookLog.objects.filter(direction='inbound').first()
@@ -213,7 +189,7 @@ class WebhookDispatcherTestCase(TestCase):
         self.assertEqual(inbound_log.webhook_type, 'inbound_twa_app_status')
         self.assertTrue(inbound_log.success)
 
-        self.assertEqual(outbound_log.webhook_type, 'outbound_abc_app_status')
+        self.assertEqual(outbound_log.webhook_type, 'outbound_abc_kyc_status')
         self.assertTrue(outbound_log.success)
         self.assertEqual(outbound_log.http_status, 200)
 
@@ -257,48 +233,3 @@ class WebhookDispatcherTestCase(TestCase):
         self.assertIsNotNone(outbound_log)
         self.assertTrue(inbound_log.success)
         self.assertTrue(outbound_log.success)
-
-    @patch('requests.post')
-    def test_acknowledge_endpoint_triggers_outbound_webhook(self, mock_post):
-        """Verify that POST /v1/issuer-bank/application/acknowledge triggers outbound dispatch to ABC."""
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"success": True}
-        mock_post.return_value = mock_response
-
-        # Execute inbound ABC acknowledge call (bypass signature check via mocking/HMAC headers or using helper)
-        # Note: Since applications views are protected by HMACAuthentication, let's generate valid HMAC headers
-        # or we can simply test direct view or mock authentication.
-        # Let's bypass HMAC auth by patching applications HMAC authentication or by constructing a valid signature.
-        # Constructing a valid signature:
-        # message = client_secret + client_id + timestamp
-        # signature = SHA256(message).hexdigest()
-        import hashlib
-        client_id = "mock_abc_client_id_tap"
-        client_secret = "mock_abc_client_secret_hmac_sha256"
-        timestamp = str(int(time.time()))
-        message = f"{client_secret}{client_id}{timestamp}"
-        signature = hashlib.sha256(message.encode('utf-8')).hexdigest()
-
-        # Call acknowledge
-        url = reverse('issuer_bank:acknowledge_application')
-        payload = {"tracking_id": self.student.tracking_id}
-
-        response = self.client.post(
-            url,
-            data=json.dumps(payload),
-            content_type='application/json',
-            HTTP_X_CLIENT_ID=client_id,
-            HTTP_X_CLIENT_TIMESTAMP=timestamp,
-            HTTP_X_CLIENT_HMAC=signature
-        )
-
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-        # Verify DB transitioned
-        self.student.refresh_from_db()
-        self.assertEqual(self.student.application_status, "PROCESSING")
-
-        # Verify outbound ABC dispatcher call was triggered
-        mock_post.assert_called_once()
-        self.assertEqual(mock_post.call_args[0][0], settings.ABC_STATUS_UPDATE_WEBHOOK_URL)

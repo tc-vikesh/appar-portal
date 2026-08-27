@@ -169,6 +169,7 @@ class M2PClient:
             "channelName": "MIN_KYC",
             "entityType": "CUSTOMER",
             "businessType": "TCAPAAR",
+            "productId": "tcapaarncmc",
             "businessId": student.apaar_id,
             "title": student.title or ("Mr" if student.gender == "M" else "Ms"),
             "otp": otp,
