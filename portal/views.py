@@ -255,6 +255,7 @@ class OTPVerifyView(View):
                 m2p_response.get("success") is True or 
                 m2p_response.get("result", {}).get("success") is True or
                 (m2p_response.get("result") is not None and (
+                    "cardDetails" in m2p_response["result"] or
                     "kitNo" in m2p_response["result"] or 
                     "token" in m2p_response["result"] or 
                     "entityId" in m2p_response["result"]
@@ -264,7 +265,9 @@ class OTPVerifyView(View):
             if m2p_success:
                 result_data = m2p_response.get("result", {}) if "result" in m2p_response else m2p_response
                 student.m2p_entity_id = result_data.get("entityId") or student.apaar_id
-                student.m2p_kit_no = result_data.get("kitNo") or "KIT-MOCK-12345"
+                
+                card_details = result_data.get("cardDetails", {})
+                student.m2p_kit_no = card_details.get("kitNumber") or result_data.get("kitNo") or "KIT-MOCK-12345"
                 student.m2p_token = result_data.get("token") or "TOKEN-MOCK-abcde"
 
                 # Transition statuses

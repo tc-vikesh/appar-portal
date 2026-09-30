@@ -303,9 +303,13 @@ class PortalTestCase(TestCase):
 
         mock_m2p_register.return_value = {
             "success": True,
-            "entityId": "APAAR-E2E-99999",
-            "kitNo": "KIT-TEST-999",
-            "token": "TOKEN-TEST-999"
+            "result": {
+                "entityId": "APAAR-E2E-99999",
+                "cardDetails": {
+                    "kitNumber": "KIT-TEST-999"
+                },
+                "token": "TOKEN-TEST-999"
+            }
         }
 
         # Mock TWA sync success

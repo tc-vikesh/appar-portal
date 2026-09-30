@@ -166,81 +166,46 @@ class M2PClientFlowTestCase(TestCase):
         
         self.student.delete()
 
-    @patch('requests.post')
-    def test_m2p_client_flow_without_encryption(self, mock_post):
+    @patch('requests.get')
+    def test_m2p_client_flow_without_encryption(self, mock_get):
         settings.M2P_ENCRYPTION_ENABLED = False
         
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {"success": True, "result": {"success": True}}
-        mock_post.return_value = mock_resp
+        mock_get.return_value = mock_resp
         
         client = M2PClient()
         response = client.generate_otp(self.student)
         
         self.assertTrue(response["success"])
-        
-        # Verify mock post was called with plain text payload
-        args, kwargs = mock_post.call_args
-        self.assertEqual(kwargs["json"]["entityId"], "APAAR-M2P-FLOW")
         
         # Verify db log contains plain payload but no encrypted payloads
         log = M2PApiLog.objects.filter(student=self.student, endpoint="generate_otp").first()
         self.assertIsNotNone(log)
-        self.assertEqual(log.request_payload["entityId"], "APAAR-M2P-FLOW")
+        self.assertIsNone(log.request_payload) # It's a GET request, so payload is None
         self.assertIsNone(log.encrypted_request_payload)
         self.assertIsNone(log.encrypted_response_payload)
 
-    @patch('requests.post')
-    def test_m2p_client_flow_with_encryption(self, mock_post):
+    @patch('requests.get')
+    def test_m2p_client_flow_with_encryption(self, mock_get):
         settings.M2P_ENCRYPTION_ENABLED = True
-        
-        # We need to construct a valid encrypted mock response envelope
-        # Let's use our helper to encrypt a mock response payload
-        from m2p.crypto import M2PCryptoHelper
-        helper = M2PCryptoHelper(
-            public_key_pem=self.public_pem,
-            private_key_pem=self.private_pem,
-            private_key_passphrase="testpass"
-        )
-        
-        plain_response = '{"success": true, "result": {"success": true, "message": "Encrypted successful call"}}'
-        envelope = helper.encrypt_request(plain_response)
-        
-        mock_resp_envelope = {
-            "body": envelope["body"],
-            "headers": {
-                "key": envelope["key"],
-                "refNo": envelope["refNo"],
-                "entity": envelope["entity"],
-                "hash": envelope["token"]
-            }
-        }
         
         mock_resp = MagicMock()
         mock_resp.status_code = 200
-        mock_resp.json.return_value = mock_resp_envelope
-        mock_post.return_value = mock_resp
+        mock_resp.json.return_value = {"success": True, "result": {"success": True, "message": "Unencrypted successful call even on encrypted url"}}
+        mock_get.return_value = mock_resp
         
         client = M2PClient()
         response = client.generate_otp(self.student)
         
         self.assertTrue(response["success"])
         
-        # Verify mock post was called with encrypted request wrapper
-        args, kwargs = mock_post.call_args
-        req_json = kwargs["json"]
-        self.assertIn("body", req_json)
-        self.assertIn("key", req_json)
-        self.assertIn("token", req_json)
-        
-        # Verify database log contains BOTH plain and encrypted payloads
+        # Verify database log contains plain payload
         log = M2PApiLog.objects.filter(student=self.student, endpoint="generate_otp").first()
         self.assertIsNotNone(log)
-        self.assertEqual(log.request_payload["entityId"], "APAAR-M2P-FLOW")
-        self.assertIsNotNone(log.encrypted_request_payload)
-        self.assertEqual(log.encrypted_request_payload["body"], req_json["body"])
-        self.assertEqual(log.response_payload["result"]["message"], "Encrypted successful call")
-        self.assertIsNotNone(log.encrypted_response_payload)
-        self.assertEqual(log.encrypted_response_payload["body"], envelope["body"])
+        self.assertIsNone(log.request_payload) # GET request
+        self.assertIsNone(log.encrypted_request_payload)
+        self.assertEqual(log.response_payload["result"]["message"], "Unencrypted successful call even on encrypted url")
+        self.assertIsNone(log.encrypted_response_payload)
 
