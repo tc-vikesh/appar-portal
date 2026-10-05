@@ -22,6 +22,34 @@ class M2PCryptoHelper:
         self.passphrase_str = private_key_passphrase or getattr(settings, 'TRANSCORP_PRIVATE_KEY_PASSPHRASE', '12345')
         self.entity_key = getattr(settings, 'M2P_ENTITY_KEY', 'TRANSCORP')
 
+    def _read_key_data(self, key_val: str) -> bytes:
+        """
+        Reads key data whether key_val is:
+        1. A valid file path on disk (e.g. 'D:\\...\\m2ppub.pem' or '/app/keys/m2ppub.pem')
+        2. A Base64-encoded string of the PEM file (from AWS Secrets Manager)
+        3. A direct PEM text string ('-----BEGIN ...')
+        """
+        if not key_val:
+            return b""
+
+        import os
+        if os.path.exists(key_val):
+            with open(key_val, 'rb') as f:
+                return f.read()
+
+        val_str = key_val.strip()
+        if val_str.startswith("-----BEGIN"):
+            return val_str.encode('utf-8')
+
+        try:
+            decoded = base64.b64decode(val_str)
+            if b"-----BEGIN" in decoded:
+                return decoded
+        except Exception:
+            pass
+
+        return val_str.encode('utf-8')
+
     def _get_public_key(self):
         if self.public_key_pem:
             return serialization.load_pem_public_key(self.public_key_pem)
@@ -29,8 +57,8 @@ class M2PCryptoHelper:
         if not self.public_key_path:
             raise ValueError("M2P_PUBLIC_KEY_PATH is not configured in settings.")
         
-        with open(self.public_key_path, 'rb') as f:
-            return serialization.load_pem_public_key(f.read())
+        key_bytes = self._read_key_data(self.public_key_path)
+        return serialization.load_pem_public_key(key_bytes)
 
     def _get_private_key(self):
         if self.private_key_pem:
@@ -40,8 +68,7 @@ class M2PCryptoHelper:
             if not self.private_key_path:
                 raise ValueError("TRANSCORP_PRIVATE_KEY_PATH is not configured in settings.")
             password = self.passphrase_str.encode('utf-8') if self.passphrase_str else None
-            with open(self.private_key_path, 'rb') as f:
-                pem_data = f.read()
+            pem_data = self._read_key_data(self.private_key_path)
 
         try:
             return serialization.load_pem_private_key(pem_data, password=password)

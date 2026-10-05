@@ -139,6 +139,7 @@ ABC_CLIENT_ID = env('ABC_CLIENT_ID', default='')
 ABC_CLIENT_SECRET = env('ABC_CLIENT_SECRET', default='')
 ABC_ENCRYPTION_KEY = env('ABC_ENCRYPTION_KEY', default='')
 ABC_KYC_STATUS_WEBHOOK_URL = env('ABC_KYC_STATUS_WEBHOOK_URL', default='')
+PORTAL_BASE_URL = env('PORTAL_BASE_URL', default='')
 
 # TWA Integration Security Settings
 TWA_SYNC_URL = env('TWA_SYNC_URL', default='https://api.stage.transcorpint.com/user/external/onboard')

@@ -1,4 +1,5 @@
 import hashlib
+import hmac
 import time
 import json
 import uuid
@@ -60,9 +61,10 @@ class TAPTestCase(TestCase):
         sec = secret or self.client_secret
         cid = client_id or self.client_id
 
-        # Calculate signature: SHA256(secret + id + timestamp)
-        message = f"{sec}{cid}{ts}"
-        signature = hashlib.sha256(message.encode('utf-8')).hexdigest()
+        # Calculate signature: HMAC-SHA256(cid:ts, key=sec)
+        msg_bytes = f"{cid}:{ts}".encode('utf-8')
+        sec_bytes = sec.encode('utf-8')
+        signature = hmac.new(sec_bytes, msg_bytes, hashlib.sha256).hexdigest()
 
         return {
             "HTTP_X_CLIENT_ID": cid,

@@ -1,5 +1,7 @@
 import time
 import json
+import random
+import string
 import requests
 from django.conf import settings
 from m2p.models import M2PApiLog
@@ -150,7 +152,8 @@ class M2PClient:
         Registers customer (MIN KYC) using OTP and Aadhaar number.
         """
         url = f"{self.base_url.rstrip('/')}/kyc/v2/register"
-        
+        random_pan = f"DBZPS{random.randint(1000, 9999)}{random.choice(string.ascii_uppercase)}"
+
         # Parse full_name into first, middle, last name blocks
         full_name = student.full_name or ""
         name_parts = full_name.split()
@@ -246,7 +249,7 @@ class M2PClient:
                 # }
                 {
                     "documentType": "PAN",
-                    "documentNo": "DBZPS9368D",
+                    "documentNo": random_pan,
                     "documentExpiry": "2099-03-01"
                 }
             ],
