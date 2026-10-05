@@ -1,5 +1,7 @@
 import time
 import json
+import random
+import string
 import requests
 from django.conf import settings
 from m2p.models import M2PApiLog
@@ -10,8 +12,8 @@ class M2PClient:
     Per Constitution P1, all outbound calls are logged in M2PApiLog inside a finally block.
     """
     def __init__(self):
-        self.base_url = getattr(settings, 'M2P_BASE_URL', 'https://kycuat.yappay.in')
-        self.tenant = getattr(settings, 'M2P_TENANT', 'TRANSCORP')
+        self.base_url = getattr(settings, 'M2P_BASE_URL', 'https://uat-prepaidv1v2.m2pfintech.com/v1v2')
+        self.tenant = getattr(settings, 'M2P_TENANT', 'TRANSCORPEDU')
 
     def _post(self, url, request_payload, student, log):
         encryption_enabled = getattr(settings, 'M2P_ENCRYPTION_ENABLED', False)
@@ -69,23 +71,39 @@ class M2PClient:
             except ValueError:
                 body = {"_raw_body": response.text[:1000]}
                 
-            log.response_payload = body
             log.encrypted_request_payload = None
             log.encrypted_response_payload = None
             return body
 
+    def _get(self, url, log):
+        headers = {
+            "TENANT": self.tenant,
+            "Content-Type": "application/json"
+        }
+        log.request_headers = headers
+
+        response = requests.get(url, headers=headers, timeout=15)
+        log.http_status = response.status_code
+        
+        try:
+            body = response.json()
+        except ValueError:
+            body = {"_raw_body": response.text[:1000]}
+            
+        log.response_payload = body
+        log.encrypted_request_payload = None
+        log.encrypted_response_payload = None
+        return body
+
     def generate_otp(self, student):
         """
-        POST /kyc/customer/generate/otp
+        GET /otp-manager/v2/generate/+91<mobile>
         Calls M2P generate-OTP service.
         """
-        url = f"{self.base_url.rstrip('/')}/kyc/customer/generate/otp"
-        request_payload = {
-            "entityId": student.apaar_id,
-            "mobileNumber": f"+91{student.mobile}",
-            "businessType": "TCAPAAR",
-            "entityType": "CUSTOMER"
-        }
+        if getattr(settings, 'M2P_ENCRYPTION_ENABLED', False):
+            url = f"{self.base_url.rstrip('/')}/Yappay/otp-manager/v2/generate/+91{student.mobile}"
+        else:
+            url = f"{self.base_url.rstrip('/')}/Yappay/otp-manager/v2/generate/+91{student.mobile}"
 
         # Initialize log object BEFORE network call (api-logging-pattern SKILL.md)
         log = M2PApiLog(
@@ -105,7 +123,7 @@ class M2PClient:
                 log.success = True
                 return body
 
-            body = self._post(url, request_payload, student, log)
+            body = self._get(url, log)
 
             success = (
                 log.http_status == 200 and 
@@ -124,7 +142,7 @@ class M2PClient:
 
         finally:
             # Measure duration and complete audit save in finally block (Constitution P1)
-            log.request_payload = request_payload
+            log.request_payload = None
             log.duration_ms = int((time.monotonic() - start) * 1000)
             log.save()
 
@@ -134,7 +152,8 @@ class M2PClient:
         Registers customer (MIN KYC) using OTP and Aadhaar number.
         """
         url = f"{self.base_url.rstrip('/')}/kyc/v2/register"
-        
+        random_pan = f"DBZPS{random.randint(1000, 9999)}{random.choice(string.ascii_uppercase)}"
+
         # Parse full_name into first, middle, last name blocks
         full_name = student.full_name or ""
         name_parts = full_name.split()
@@ -223,9 +242,14 @@ class M2PClient:
                 }
             ],
             "kycInfo": [
+                # {
+                #     "documentType": "AADHAARREF",
+                #     "documentNo": aadhaar_number,
+                #     "documentExpiry": "2099-03-01"
+                # }
                 {
-                    "documentType": "AADHAARREF",
-                    "documentNo": aadhaar_number,
+                    "documentType": "PAN",
+                    "documentNo": random_pan,
                     "documentExpiry": "2099-03-01"
                 }
             ],
@@ -253,7 +277,9 @@ class M2PClient:
                     "success": True,
                     "result": {
                         "entityId": student.apaar_id,
-                        "kitNo": "KIT-MOCK-E2E-12345",
+                        "cardDetails": {
+                            "kitNumber": "KIT-MOCK-E2E-12345"
+                        },
                         "token": "TOKEN-MOCK-E2E-abcde"
                     }
                 }
@@ -271,6 +297,7 @@ class M2PClient:
                 (
                     body.get("success") is True or
                     result_block.get("success") is True or
+                    "cardDetails" in result_block or
                     "kitNo" in result_block or 
                     "token" in result_block or 
                     "entityId" in result_block

@@ -42,9 +42,10 @@ class HMACAuthentication(authentication.BaseAuthentication):
         if ts < (current_time - 600) or ts > (current_time + 300):
             raise exceptions.AuthenticationFailed('Timestamp is outside the valid window.')
 
-        # Calculate signature: SHA256(secret + id + timestamp)
-        message = f"{client_secret}{client_id}{timestamp}"
-        calculated_signature = hashlib.sha256(message.encode('utf-8')).hexdigest()
+        # Calculate signature: HMAC-SHA256(clientId:timestamp, key=client_secret)
+        message = f"{client_id}:{timestamp}".encode('utf-8')
+        secret_key = client_secret.encode('utf-8')
+        calculated_signature = hmac.new(secret_key, message, hashlib.sha256).hexdigest()
 
         # Secure comparison using hmac.compare_digest
         if not hmac.compare_digest(calculated_signature, received_hmac):

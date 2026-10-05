@@ -4,6 +4,7 @@ import json
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db.models import Count
 from django.shortcuts import get_object_or_404
+from django.conf import settings
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, exceptions
@@ -305,6 +306,21 @@ def flatten_abc_data(data):
     return data
 
 
+def get_portal_redirect_url(request, tracking_id):
+    """
+    Constructs the portal redirect URL.
+    If the request is made to localhost or 127.0.0.1, uses the local server's absolute URI.
+    Otherwise uses PORTAL_BASE_URL if configured, falling back to build_absolute_uri.
+    """
+    try:
+        host = request.get_host().lower()
+    except Exception:
+        host = ''
+    is_local = '127.0.0.1' in host or 'localhost' in host
+    portal_base_url = '' if is_local else getattr(settings, 'PORTAL_BASE_URL', '').rstrip('/')
+    return f"{portal_base_url}/portal/{tracking_id}/" if portal_base_url else request.build_absolute_uri(f"/portal/{tracking_id}/")
+
+
 class ReceiveApplicationView(LoggingAPIView):
     """
     POST /v1/issuer-bank/application/receive
@@ -341,6 +357,7 @@ class ReceiveApplicationView(LoggingAPIView):
         # Idempotency check: if student already exists, return existing tracking_id
         try:
             student = Student.objects.get(apaar_id=apaar_id)
+            redirect_url = get_portal_redirect_url(request, student.tracking_id)
             return Response({
                 "status": "success",
                 "status_code": "200",
@@ -348,6 +365,7 @@ class ReceiveApplicationView(LoggingAPIView):
                 "data": {
                     "tracking_id": student.tracking_id,
                     "processing_status": student.application_status,
+                    "redirect_url": redirect_url,
                     "received_at": student.created_at.strftime("%Y-%m-%dT%H:%M:%SZ") if student.created_at else ""
                 }
             }, status=status.HTTP_200_OK)
@@ -373,6 +391,8 @@ class ReceiveApplicationView(LoggingAPIView):
                 kyc_status='PENDING'
             )
 
+            redirect_url = get_portal_redirect_url(request, student.tracking_id)
+
             return Response({
                 "status": "success",
                 "status_code": "200",
@@ -380,6 +400,7 @@ class ReceiveApplicationView(LoggingAPIView):
                 "data": {
                     "tracking_id": student.tracking_id,
                     "processing_status": student.application_status,
+                    "redirect_url": redirect_url,
                     "received_at": student.created_at.strftime("%Y-%m-%dT%H:%M:%SZ") if student.created_at else ""
                 }
             }, status=status.HTTP_200_OK)
