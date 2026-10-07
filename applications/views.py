@@ -10,7 +10,7 @@ from rest_framework.response import Response
 from rest_framework import status, exceptions
 
 from applications.models import ABCApiLog, Student
-from applications.serializers import StudentSerializer
+from applications.serializers import StudentSerializer, normalize_dob, normalize_gender
 from applications.authentication import HMACAuthentication
 from twa.client import TWAClient
 from webhooks.dispatcher import ABCWebhookDispatcher
@@ -248,16 +248,16 @@ def flatten_abc_data(data):
         
         personal = data.get('PERSONAL_INFO') or {}
         flat['full_name'] = personal.get('FULL_NAME')
-        flat['dob'] = personal.get('DOB')
-        flat['gender'] = personal.get('GENDER')
+        flat['dob'] = normalize_dob(personal.get('DOB'))
+        flat['gender'] = normalize_gender(personal.get('GENDER'))
         flat['mobile'] = personal.get('MOBILE')
         flat['email'] = personal.get('EMAIL')
         
         # Derive title from gender (Requirement A1)
-        gender_upper = str(flat['gender']).strip().upper() if flat['gender'] else ''
-        if gender_upper == 'M':
+        gender_code = flat['gender']
+        if gender_code == 'M':
             flat['title'] = 'Mr'
-        elif gender_upper == 'F':
+        elif gender_code == 'F':
             flat['title'] = 'Ms'
         else:
             flat['title'] = 'Mx'

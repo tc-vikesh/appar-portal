@@ -366,6 +366,92 @@ class TAPTestCase(TestCase):
         self.assertEqual(student.gender, "M")
         self.assertEqual(student.kyc_status, "PENDING")
 
+    def test_dynamic_dob_and_gender_normalization_abc_payload(self):
+        """Test ABC payload with non-standard DOB ('17/04/1979') and GENDER ('Female')."""
+        payload = {
+            "APAAR_ID": "107822938123",
+            "APPLICATION_REFERENCE_NUMBER": "APAAR-107822938123",
+            "APPLICATION_STATUS": "PENDING",
+            "SUBMITTED_DATE": "15/07/2026 15:07:10",
+            "PERSONAL_INFO": {
+                "FULL_NAME": "ANEETA SHARMA",
+                "DOB": "17/04/1979",
+                "GENDER": "Female",
+                "MOBILE": "9810601234",
+                "EMAIL": "abc79@gmail.com"
+            },
+            "ACADEMIC_INFO": {
+                "UNIVERSITY_NAME": "CCS University Meerut",
+                "COLLEGE_NAME": "MMH COLLEGE",
+                "COURSE_NAME": "Master of Computer Applications",
+                "ADMISSION_YEAR": 2021,
+                "ACADEMIC_SESSION": "2021-2023"
+            },
+            "ADDITIONAL_INFO": {
+                "BLOOD_GROUP": "O+",
+                "CURRENT_ADDRESS": {
+                    "ADDRESS_LINE": "A-123 KAVI NAGAR GHAZIABAD",
+                    "CITY": "Ghaziabad",
+                    "STATE": "Uttar Pradesh",
+                    "PIN_CODE": "201001"
+                },
+                "PERMANENT_ADDRESS": {
+                    "ADDRESS_LINE": "A-123 KAVI NAGAR GHAZIABAD",
+                    "CITY": "Ghaziabad",
+                    "STATE": "Uttar Pradesh",
+                    "PIN_CODE": "201001",
+                    "SAME_AS_CURRENT": True
+                }
+            },
+            "PHOTO_INFO": {
+                "PHOTO_NAME": "107822938964.jpg",
+                "PHOTO_PATH": "https://storage.abc.edu.in/photos/107822938964.jpg"
+            }
+        }
+
+        headers = self._generate_hmac_headers()
+        response = self.client.post(
+            reverse('issuer_bank:receive_application'),
+            data=self._encrypt(payload),
+            content_type='application/json',
+            **headers
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = self._decrypt(response.json())
+        self.assertEqual(data.get("status"), "success")
+
+        student = Student.objects.get(apaar_id="107822938123")
+        self.assertEqual(student.full_name, "ANEETA SHARMA")
+        self.assertEqual(student.dob.strftime('%Y-%m-%d'), "1979-04-17")
+        self.assertEqual(student.gender, "F")
+        self.assertEqual(student.title, "Ms")
+
+    def test_dob_and_gender_helper_functions(self):
+        """Unit test normalize_dob and normalize_gender helpers directly."""
+        from applications.serializers import normalize_dob, normalize_gender
+
+        # Test various date formats
+        self.assertEqual(normalize_dob("17/04/1979"), "1979-04-17")
+        self.assertEqual(normalize_dob("1979-04-17"), "1979-04-17")
+        self.assertEqual(normalize_dob("17-04-1979"), "1979-04-17")
+        self.assertEqual(normalize_dob("17.04.1979"), "1979-04-17")
+        self.assertIsNone(normalize_dob(None))
+        self.assertIsNone(normalize_dob(""))
+
+        # Test gender representations
+        self.assertEqual(normalize_gender("Female"), "F")
+        self.assertEqual(normalize_gender("female"), "F")
+        self.assertEqual(normalize_gender("F"), "F")
+        self.assertEqual(normalize_gender("Woman"), "F")
+        self.assertEqual(normalize_gender("Male"), "M")
+        self.assertEqual(normalize_gender("male"), "M")
+        self.assertEqual(normalize_gender("M"), "M")
+        self.assertEqual(normalize_gender("Man"), "M")
+        self.assertEqual(normalize_gender("Other"), "O")
+        self.assertEqual(normalize_gender("Transgender"), "O")
+        self.assertEqual(normalize_gender("O"), "O")
+        self.assertIsNone(normalize_gender(None))
+
     def test_health_check_endpoint(self):
         """Test that the GET /health/ health check endpoint returns 200 and indicates a healthy database."""
         response = self.client.get(reverse('health_check'))
@@ -374,5 +460,6 @@ class TAPTestCase(TestCase):
         data = response.json()
         self.assertEqual(data.get("status"), "healthy")
         self.assertEqual(data.get("database"), "connected")
+
 
 

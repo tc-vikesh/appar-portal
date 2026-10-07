@@ -292,12 +292,12 @@ document.addEventListener('DOMContentLoaded', function() {
     const errorConsent = document.getElementById('error-consent');
     const errorOtp = document.getElementById('error-otp');
     
-    // Create inline error banner at top of form
+    // Create inline error banner below Aadhaar number input box
     const globalAlert = document.createElement('div');
     globalAlert.className = 'alert-error';
     globalAlert.style.display = 'none';
-    globalAlert.style.marginBottom = '20px';
-    document.querySelector('form').prepend(globalAlert);
+    globalAlert.style.marginTop = '14px';
+    aadhaarInput.closest('.form-group').appendChild(globalAlert);
     
     let activeRefId = "";
     

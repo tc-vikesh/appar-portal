@@ -1,8 +1,64 @@
 import re
+from datetime import datetime
+import dateutil.parser
 from rest_framework import serializers
 from applications.models import Student
 
+def normalize_dob(dob_val):
+    if not dob_val:
+        return None
+    dob_str = str(dob_val).strip()
+    if not dob_str:
+        return None
+
+    # Check common explicit date formats
+    for fmt in ('%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y', '%Y/%m/%d', '%d.%m.%Y', '%d/%m/%y', '%d-%m-%y'):
+        try:
+            return datetime.strptime(dob_str, fmt).strftime('%Y-%m-%d')
+        except (ValueError, TypeError):
+            continue
+
+    # Fallback to dateutil with dayfirst=True
+    try:
+        dt = dateutil.parser.parse(dob_str, dayfirst=True)
+        return dt.strftime('%Y-%m-%d')
+    except Exception:
+        return dob_str
+
+
+def normalize_gender(gender_val):
+    if not gender_val:
+        return None
+    g = str(gender_val).strip().upper()
+    if g in ('M', 'MALE', 'BOY', 'MAN'):
+        return 'M'
+    elif g in ('F', 'FEMALE', 'GIRL', 'WOMAN'):
+        return 'F'
+    elif g in ('O', 'OTHER', 'TRANSGENDER', 'TG'):
+        return 'O'
+    if g and g[0] in ('M', 'F', 'O'):
+        return g[0]
+    return gender_val
+
+
 class StudentSerializer(serializers.ModelSerializer):
+    def to_internal_value(self, data):
+        if isinstance(data, dict):
+            data = data.copy()
+            if 'dob' in data and data['dob']:
+                data['dob'] = normalize_dob(data['dob'])
+            if 'gender' in data and data['gender']:
+                norm_gender = normalize_gender(data['gender'])
+                data['gender'] = norm_gender
+                if not data.get('title') and norm_gender:
+                    if norm_gender == 'M':
+                        data['title'] = 'Mr'
+                    elif norm_gender == 'F':
+                        data['title'] = 'Ms'
+                    else:
+                        data['title'] = 'Mx'
+        return super().to_internal_value(data)
+
     class Meta:
         model = Student
         # Exclude internal/system fields and m2p/twa responses from inbound serializing
@@ -31,10 +87,14 @@ class StudentSerializer(serializers.ModelSerializer):
         return value
 
     def validate_current_address(self, value):
+        if value is None:
+            return value
         self._validate_pincode_in_address(value, 'current_address')
         return value
 
     def validate_permanent_address(self, value):
+        if value is None:
+            return value
         self._validate_pincode_in_address(value, 'permanent_address')
         return value
 
