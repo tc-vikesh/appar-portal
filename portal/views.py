@@ -5,14 +5,17 @@ from django.views import View
 from django.contrib import messages
 from django.urls import reverse
 from django.http import JsonResponse
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import never_cache
 
 from applications.models import Student
 from cms.models import CMSPage
-from m2p.client import M2PClient
+from m2p.client import M2PClient, format_m2p_error
 from twa.client import TWAClient
 from applications.aadhaar_client import AadhaarClient
 from webhooks.dispatcher import ABCWebhookDispatcher
 
+@method_decorator(never_cache, name='dispatch')
 class LandingView(View):
     """
     GET /portal/<tracking_id>/
@@ -21,13 +24,24 @@ class LandingView(View):
     def get(self, request, tracking_id):
         student = get_object_or_404(Student, tracking_id=tracking_id)
 
-        # Check if student is locked out due to too many OTP attempts
+        # If student has already completed KYC or card is issued, direct them to success page
+        if student.kyc_status in ('MIN_KYC', 'FULL_KYC') or student.application_status == 'ISSUED':
+            return redirect(reverse('portal:success', kwargs={'tracking_id': tracking_id}))
+
+        # If student was locked out and hits the main portal URL, unblock them
+        # and restart the verification journey with a fresh attempt
         if student.otp_locked:
-            return redirect(reverse('portal:locked', kwargs={'tracking_id': tracking_id}))
+            student.otp_locked = False
+            student.otp_attempt_count = 0
+            student.aadhaar_number = None
+            student.aadhaar_ref_id = None
+            student.aadhaar_verified = False
+            student.save()
 
         return render(request, 'portal/landing.html', {'student': student})
 
 
+@method_decorator(never_cache, name='dispatch')
 class AadhaarSendOTPView(View):
     """
     POST /portal/<tracking_id>/aadhaar/send-otp/
@@ -35,6 +49,14 @@ class AadhaarSendOTPView(View):
     """
     def post(self, request, tracking_id):
         student = get_object_or_404(Student, tracking_id=tracking_id)
+
+        # If student has already completed KYC or card is issued, prevent re-sending OTP
+        if student.kyc_status in ('MIN_KYC', 'FULL_KYC') or student.application_status == 'ISSUED':
+            return JsonResponse({
+                "success": False, 
+                "error": "KYC verification has already been completed.",
+                "redirect_url": reverse('portal:success', kwargs={'tracking_id': tracking_id})
+            }, status=400)
 
         if student.otp_locked:
             return JsonResponse({"success": False, "error": "Verification locked due to too many failed attempts.", "locked": True}, status=403)
@@ -91,6 +113,7 @@ class AadhaarSendOTPView(View):
             return JsonResponse({"success": False, "error": f"Aadhaar service error: {str(exc)}"}, status=500)
 
 
+@method_decorator(never_cache, name='dispatch')
 class AadhaarVerifyOTPView(View):
     """
     POST /portal/<tracking_id>/aadhaar/verify-otp/
@@ -98,6 +121,14 @@ class AadhaarVerifyOTPView(View):
     """
     def post(self, request, tracking_id):
         student = get_object_or_404(Student, tracking_id=tracking_id)
+
+        # If student has already completed KYC or card is issued, prevent re-verifying
+        if student.kyc_status in ('MIN_KYC', 'FULL_KYC') or student.application_status == 'ISSUED':
+            return JsonResponse({
+                "success": False, 
+                "error": "KYC verification has already been completed.",
+                "redirect_url": reverse('portal:success', kwargs={'tracking_id': tracking_id})
+            }, status=400)
 
         if student.otp_locked:
             return JsonResponse({"success": False, "error": "Verification locked.", "locked": True}, status=403)
@@ -179,9 +210,12 @@ class AadhaarVerifyOTPView(View):
             m2p = M2PClient()
             try:
                 m2p_response = m2p.generate_otp(student)
+                result_block = m2p_response.get("result") or {}
                 m2p_success = (
-                    m2p_response.get("success") is True or 
-                    m2p_response.get("result", {}).get("success") is True
+                    not m2p_response.get("exception") and (
+                        m2p_response.get("success") is True or 
+                        result_block.get("success") is True
+                    )
                 )
 
                 if m2p_success:
@@ -190,7 +224,7 @@ class AadhaarVerifyOTPView(View):
                     student.save()
                     return JsonResponse({"success": True, "redirect_url": reverse('portal:otp_verify', kwargs={'tracking_id': tracking_id})})
                 else:
-                    err_msg = m2p_response.get("error") or m2p_response.get("exception") or "Failed to generate OTP from KYC provider."
+                    err_msg = format_m2p_error(m2p_response, "Failed to generate OTP from KYC provider.")
                     return JsonResponse({"success": False, "error": f"KYC OTP generation failed: {err_msg}"})
 
             except Exception as exc:
@@ -199,6 +233,7 @@ class AadhaarVerifyOTPView(View):
             return JsonResponse({"success": False, "error": f"Verification server error: {str(exc)}"}, status=500)
 
 
+@method_decorator(never_cache, name='dispatch')
 class OTPVerifyView(View):
     """
     GET/POST /portal/<tracking_id>/otp/
@@ -206,6 +241,10 @@ class OTPVerifyView(View):
     """
     def get(self, request, tracking_id):
         student = get_object_or_404(Student, tracking_id=tracking_id)
+
+        # If student has already completed KYC or card is issued, direct them to success page
+        if student.kyc_status in ('MIN_KYC', 'FULL_KYC') or student.application_status == 'ISSUED':
+            return redirect(reverse('portal:success', kwargs={'tracking_id': tracking_id}))
 
         # Redirect if Aadhaar is not yet verified
         if not student.aadhaar_verified:
@@ -222,6 +261,10 @@ class OTPVerifyView(View):
 
     def post(self, request, tracking_id):
         student = get_object_or_404(Student, tracking_id=tracking_id)
+
+        # If student has already completed KYC or card is issued, direct them to success page
+        if student.kyc_status in ('MIN_KYC', 'FULL_KYC') or student.application_status == 'ISSUED':
+            return redirect(reverse('portal:success', kwargs={'tracking_id': tracking_id}))
 
         if not student.aadhaar_verified:
             return redirect(reverse('portal:landing', kwargs={'tracking_id': tracking_id}))
@@ -257,15 +300,16 @@ class OTPVerifyView(View):
         m2p = M2PClient()
         try:
             m2p_response = m2p.register_min_kyc(student, otp, student.aadhaar_number)
+            result_block = m2p_response.get("result") or {}
             m2p_success = (
-                m2p_response.get("success") is True or 
-                m2p_response.get("result", {}).get("success") is True or
-                (m2p_response.get("result") is not None and (
-                    "cardDetails" in m2p_response["result"] or
-                    "kitNo" in m2p_response["result"] or 
-                    "token" in m2p_response["result"] or 
-                    "entityId" in m2p_response["result"]
-                ))
+                not m2p_response.get("exception") and (
+                    m2p_response.get("success") is True or 
+                    result_block.get("success") is True or
+                    "cardDetails" in result_block or
+                    "kitNo" in result_block or 
+                    "token" in result_block or 
+                    "entityId" in result_block
+                )
             )
 
             if m2p_success:
@@ -297,7 +341,7 @@ class OTPVerifyView(View):
 
                 return redirect(reverse('portal:success', kwargs={'tracking_id': tracking_id}))
             else:
-                err_msg = m2p_response.get("error") or m2p_response.get("exception") or "Invalid OTP code entered."
+                err_msg = format_m2p_error(m2p_response, "Invalid OTP code entered.")
                 errors['m2p'] = err_msg
 
         except Exception as exc:
@@ -315,6 +359,51 @@ class OTPVerifyView(View):
         })
 
 
+@method_decorator(never_cache, name='dispatch')
+class M2PResendOTPView(View):
+    """
+    POST /portal/<tracking_id>/m2p/resend-otp/
+    AJAX endpoint to resend M2P KYC OTP.
+    """
+    def post(self, request, tracking_id):
+        student = get_object_or_404(Student, tracking_id=tracking_id)
+
+        # If student has already completed KYC or card is issued, prevent re-sending OTP
+        if student.kyc_status in ('MIN_KYC', 'FULL_KYC') or student.application_status == 'ISSUED':
+            return JsonResponse({
+                "success": False, 
+                "error": "KYC verification has already been completed.",
+                "redirect_url": reverse('portal:success', kwargs={'tracking_id': tracking_id})
+            }, status=400)
+
+        if not student.aadhaar_verified:
+            return JsonResponse({"success": False, "error": "Aadhaar verification is required before generating KYC OTP."}, status=400)
+
+        if student.otp_locked:
+            return JsonResponse({"success": False, "error": "Verification locked due to too many failed attempts.", "locked": True}, status=403)
+
+        m2p = M2PClient()
+        try:
+            m2p_response = m2p.generate_otp(student)
+            m2p_success = (
+                m2p_response.get("success") is True or 
+                m2p_response.get("result", {}).get("success") is True
+            )
+
+            if m2p_success:
+                masked_mobile = f"+91 ******{student.mobile[-4:]}" if student.mobile and len(student.mobile) >= 4 else f"+91 {student.mobile}"
+                return JsonResponse({
+                    "success": True, 
+                    "message": f"A new OTP has been sent to your registered mobile number: {masked_mobile}"
+                })
+            else:
+                err_msg = format_m2p_error(m2p_response, "Failed to resend OTP from KYC provider.")
+                return JsonResponse({"success": False, "error": f"KYC OTP generation failed: {err_msg}"})
+        except Exception as exc:
+            return JsonResponse({"success": False, "error": f"KYC server error: {str(exc)}"}, status=500)
+
+
+@method_decorator(never_cache, name='dispatch')
 class SuccessView(View):
     """
     GET /portal/<tracking_id>/success/
@@ -323,8 +412,8 @@ class SuccessView(View):
     def get(self, request, tracking_id):
         student = get_object_or_404(Student, tracking_id=tracking_id)
 
-        # Secure: Ensure student has actually completed MIN KYC first
-        if student.kyc_status != 'MIN_KYC':
+        # Secure: Ensure student has completed KYC or card is issued
+        if student.kyc_status not in ('MIN_KYC', 'FULL_KYC') and student.application_status != 'ISSUED':
             return redirect(reverse('portal:landing', kwargs={'tracking_id': tracking_id}))
 
         masked_mobile = f"XXXXXX{student.mobile[-4:]}" if student.mobile and len(student.mobile) >= 4 else "XXXXXX1643"
@@ -368,6 +457,7 @@ class SuccessView(View):
         })
 
 
+@method_decorator(never_cache, name='dispatch')
 class LockedView(View):
     """
     GET /portal/<tracking_id>/locked/

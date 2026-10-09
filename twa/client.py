@@ -132,7 +132,7 @@ class TWAClient:
             "identifier": "+91" + student.mobile,
             "status": "ACTIVATED",
             "accountIdentifierType": "phone",
-            "programName": "TCAPAAR",
+            "programName": "TRANSCORPEDU",
             "entityId": student.m2p_entity_id or student.apaar_id,
             "vcipToken": student.m2p_token or "",
             "apaarId": student.apaar_id,

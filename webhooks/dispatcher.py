@@ -13,6 +13,33 @@ class ABCWebhookDispatcher:
     Per Sprint 5 requirements, all failures are caught silently (non-blocking).
     """
 
+    def dispatch_application_status_update(self, student, remarks=None):
+        """
+        Sends application processing status update to ABC.
+        Endpoint: ABC_APP_STATUS_WEBHOOK_URL or ABC_KYC_STATUS_WEBHOOK_URL fallback.
+        """
+        url = getattr(settings, 'ABC_APP_STATUS_WEBHOOK_URL', None) or getattr(settings, 'ABC_KYC_STATUS_WEBHOOK_URL', '')
+        payload = {
+            "TRACKING_ID": student.tracking_id,
+            "APAAR_ID": student.apaar_id,
+            "PROCESSING_STATUS": student.application_status,
+            "KYC_STATUS": student.kyc_status,
+            "REMARKS": remarks or "",
+            "UPDATED_AT": student.updated_at.strftime("%Y-%m-%dT%H:%M:%SZ") if student.updated_at else "",
+        }
+        if student.application_status == "ISSUED":
+            payload["CARD_DETAILS"] = {
+                "CARD_NUMBER": "1234XXXXXX5678",
+                "EXPIRY_DATE": "12/2028",
+                "ISSUE_DATE": student.updated_at.strftime("%Y-%m-%dT%H:%M:%SZ") if student.updated_at else ""
+            }
+        return self._send_webhook(
+            url=url,
+            payload=payload,
+            webhook_type='outbound_abc_app_status',
+            student=student
+        )
+
     def dispatch_kyc_status_update(self, student, remarks=None):
         """
         Sends combined application and KYC status update to ABC.

@@ -384,6 +384,14 @@ class ReceiveApplicationView(LoggingAPIView):
                     "errors": [{"field": "APPLICATION_REFERENCE_NUMBER", "message": "APPLICATION_REFERENCE_NUMBER is required"}]
                 }, status=status.HTTP_400_BAD_REQUEST)
 
+            if Student.objects.filter(tracking_id=tracking_id).exists():
+                return Response({
+                    "status": "error",
+                    "status_code": "400",
+                    "message": "Invalid request format",
+                    "errors": [{"field": "APPLICATION_REFERENCE_NUMBER", "message": "An application with this reference number already exists."}]
+                }, status=status.HTTP_400_BAD_REQUEST)
+
             # Save student record and automatically transition to PROCESSING with kyc_status PENDING
             student = serializer.save(
                 tracking_id=tracking_id,
