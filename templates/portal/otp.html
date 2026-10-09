@@ -8,12 +8,19 @@
 {% endblock %}
 
 {% block content %}
-<form method="POST" action="">
+<form method="POST" action="" id="otp-form">
     {% csrf_token %}
 
+    <div id="m2p-resend-alert" class="alert-success" style="display: none; margin-bottom: 20px;"></div>
+    <div id="m2p-resend-error" class="alert-error" style="display: none; margin-bottom: 20px;"></div>
+
     {% if errors.m2p %}
-    <div class="alert-error">
-        <strong>⚠️ Verification Failed:</strong> {{ errors.m2p }}
+    <div class="alert-error" style="align-items: flex-start;">
+        <span style="font-size: 18px; margin-right: 6px;">⚠️</span>
+        <div>
+            <strong style="display: block; margin-bottom: 2px;">Verification Failed</strong>
+            <span style="font-size: 13.5px; line-height: 1.4;">{{ errors.m2p }}</span>
+        </div>
     </div>
     {% endif %}
 
@@ -24,7 +31,7 @@
     {% endif %}
 
     <!-- Attempt indicator block -->
-    <div style="background: rgba(255, 255, 255, 0.03); border: 1px dashed rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 14px; margin-bottom: 24px; font-size: 13.5px;">
+    <div style="background: rgba(255, 255, 255, 0.03); border: 1px dashed rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 14px; margin-bottom: 24px; font-size: 13.5px; text-align: center;">
         Remaining verification attempts: 
         <strong style="color: {% if remaining_attempts <= 1 %}var(--error){% else %}var(--warning){% endif %}; font-size: 15px;">
             {{ remaining_attempts }} of 3
@@ -44,16 +51,142 @@
             maxlength="6"
             pattern="\d{6}"
             required
+            autofocus
         >
     </div>
 
-    <button type="submit" class="btn" style="margin-top: 10px;">Verify & Complete Small KYC</button>
+    <button type="submit" id="btn-submit-m2p" class="btn" style="margin-top: 10px;">Verify & Complete Small KYC</button>
 
-    <div style="margin-top: 24px;">
-        <p style="font-size: 13px; margin-bottom: 0;">
-            Didn't receive the code? 
-            <a href="{% url 'portal:landing' student.tracking_id %}" style="color: var(--accent-secondary); text-decoration: none; font-weight: 600;">Resend OTP</a>.
-        </p>
+    <div id="m2p-resend-container" style="margin-top: 24px; text-align: center;">
+        <span style="font-size: 13.5px; color: var(--text-muted);">Didn't receive the code? </span>
+        <button type="button" id="btn-resend-m2p" class="btn-link" style="display: none;">Resend OTP</button>
+        <span id="m2p-timer" style="color: var(--accent-secondary); font-weight: 600; font-size: 13.5px;">Resend OTP in <span id="m2p-countdown">30</span>s</span>
+    </div>
+
+    <div style="margin-top: 20px; text-align: center;">
+        <a href="{% url 'portal:landing' student.tracking_id %}" style="color: var(--text-muted); font-size: 12.5px; text-decoration: none;">
+            ← Back to Verification Details
+        </a>
     </div>
 </form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const trackingId = "{{ student.tracking_id }}";
+    const otpForm = document.getElementById('otp-form');
+    const otpInput = document.getElementById('otp');
+    const submitBtn = document.getElementById('btn-submit-m2p');
+    const resendBtn = document.getElementById('btn-resend-m2p');
+    const timerSpan = document.getElementById('m2p-timer');
+    const countdownSpan = document.getElementById('m2p-countdown');
+    const resendAlert = document.getElementById('m2p-resend-alert');
+    const resendError = document.getElementById('m2p-resend-error');
+
+    // Only allow digits in OTP input
+    otpInput.addEventListener('input', function() {
+        this.value = this.value.replace(/\D/g, '');
+    });
+
+    // Single-click submission prevention and loading indicator
+    otpForm.addEventListener('submit', function(e) {
+        if (submitBtn.disabled) {
+            e.preventDefault();
+            return false;
+        }
+
+        const otpVal = otpInput.value.trim();
+        if (!/^\d{6}$/.test(otpVal)) {
+            return true; // Let browser/Django HTML5 pattern validate
+        }
+
+        // Lock button immediately to prevent multiple submissions
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span class="spinner"></span> Verifying & Registering...';
+    });
+
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+    const csrftoken = getCookie('csrftoken');
+
+    let resendInterval = null;
+    function startM2PCountdown(seconds = 30) {
+        clearInterval(resendInterval);
+        resendBtn.style.display = 'none';
+        resendBtn.disabled = true;
+        timerSpan.style.display = 'inline';
+        countdownSpan.innerText = seconds;
+
+        let remaining = seconds;
+        resendInterval = setInterval(() => {
+            remaining -= 1;
+            if (remaining <= 0) {
+                clearInterval(resendInterval);
+                timerSpan.style.display = 'none';
+                resendBtn.style.display = 'inline-flex';
+                resendBtn.disabled = false;
+                resendBtn.innerText = "Resend OTP";
+            } else {
+                countdownSpan.innerText = remaining;
+            }
+        }, 1000);
+    }
+
+    // Start 30s countdown on initial page load
+    startM2PCountdown(30);
+
+    // Resend M2P OTP
+    resendBtn.addEventListener('click', function() {
+        if (resendBtn.disabled) return;
+
+        resendAlert.style.display = 'none';
+        resendError.style.display = 'none';
+
+        resendBtn.disabled = true;
+        resendBtn.innerHTML = '<span class="spinner"></span> Resending...';
+
+        fetch(`/portal/${trackingId}/m2p/resend-otp/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrftoken
+            }
+        })
+        .then(response => response.json().then(data => ({ status: response.status, body: data })))
+        .then(({ status, body }) => {
+            if (body.success) {
+                resendAlert.innerHTML = `<strong>✅ Success:</strong> ${body.message || "A new OTP has been sent."}`;
+                resendAlert.style.display = 'flex';
+                startM2PCountdown(30);
+                otpInput.value = '';
+                otpInput.focus();
+            } else {
+                resendError.innerHTML = `<strong>⚠️ Resend Failed:</strong> ${body.error || "Failed to resend OTP."}`;
+                resendError.style.display = 'flex';
+                resendBtn.disabled = false;
+                resendBtn.innerText = "Resend OTP";
+            }
+        })
+        .catch(err => {
+            resendError.innerHTML = "<strong>⚠️ Error:</strong> Network error occurred while resending OTP.";
+            resendError.style.display = 'flex';
+            resendBtn.disabled = false;
+            resendBtn.innerText = "Resend OTP";
+        });
+    });
+});
+</script>
 {% endblock %}

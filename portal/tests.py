@@ -30,7 +30,7 @@ class PortalTestCase(TestCase):
             current_address={"city": "Delhi", "pincode": "110016"},
             permanent_address={"city": "Jaipur", "pincode": "302001"},
             application_status="RECEIVED",
-            kyc_status="MIN_KYC"
+            kyc_status="PENDING"
         )
 
         settings.M2P_BASE_URL = "https://kycuat.yappay.in"
@@ -48,23 +48,41 @@ class PortalTestCase(TestCase):
         self.assertTemplateUsed(response, 'portal/landing.html')
         self.assertContains(response, self.student.full_name)
 
-    def test_portal_landing_get_locked(self):
-        """Test GET /portal/<tracking_id>/ redirects to locked out screen if student is locked."""
+    def test_portal_landing_unblocks_locked_student(self):
+        """Test GET /portal/<tracking_id>/ unblocks a locked student and restarts journey with empty Aadhaar input."""
         self.student.otp_locked = True
+        self.student.otp_attempt_count = 3
+        self.student.aadhaar_number = "123456789012"
+        self.student.aadhaar_ref_id = "REF-OLD-123"
+        self.student.aadhaar_verified = True
+        self.student.kyc_status = "PENDING"
         self.student.save()
 
-        response = self.client.get(
-            reverse('portal:landing', kwargs={'tracking_id': self.student.tracking_id})
-        )
-        self.assertEqual(response.status_code, 302)
-        self.assertRedirects(response, reverse('portal:locked', kwargs={'tracking_id': self.student.tracking_id}))
-
-        # GET locked view renders 200
+        # Direct hit on locked view renders 200 with restart link
         response_locked = self.client.get(
             reverse('portal:locked', kwargs={'tracking_id': self.student.tracking_id})
         )
         self.assertEqual(response_locked.status_code, 200)
         self.assertTemplateUsed(response_locked, 'portal/locked.html')
+        self.assertContains(response_locked, reverse('portal:landing', kwargs={'tracking_id': self.student.tracking_id}))
+
+        # Hitting the main portal landing URL unblocks the user
+        response = self.client.get(
+            reverse('portal:landing', kwargs={'tracking_id': self.student.tracking_id})
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'portal/landing.html')
+
+        # Verify student was unblocked and fields reset
+        self.student.refresh_from_db()
+        self.assertFalse(self.student.otp_locked)
+        self.assertEqual(self.student.otp_attempt_count, 0)
+        self.assertIsNone(self.student.aadhaar_number)
+        self.assertIsNone(self.student.aadhaar_ref_id)
+        self.assertFalse(self.student.aadhaar_verified)
+
+        # Verify Aadhaar input is NOT prefilled in response HTML
+        self.assertNotContains(response, 'value="123456789012"')
 
     @patch('applications.aadhaar_client.AadhaarClient.aadhaar_send_otp')
     @patch('m2p.client.M2PClient.generate_otp')
@@ -90,9 +108,9 @@ class PortalTestCase(TestCase):
         self.assertTrue(data["success"])
         self.assertEqual(data["ref_id"], "REF-MOCK-A1")
 
-        # Verify student Aadhaar info is saved
+        # Verify student Aadhaar info is saved (last 4 digits per compliance)
         self.student.refresh_from_db()
-        self.assertEqual(self.student.aadhaar_number, "123456789012")
+        self.assertEqual(self.student.aadhaar_number, "9012")
         self.assertEqual(self.student.aadhaar_ref_id, "REF-MOCK-A1")
 
     def test_portal_landing_send_otp_validation(self):
@@ -233,7 +251,7 @@ class PortalTestCase(TestCase):
         self.assertRedirects(response, reverse('portal:landing', kwargs={'tracking_id': self.student.tracking_id}))
 
     def test_success_get_with_min_kyc(self):
-        """Test GET /success renders CMS content successfully."""
+        """Test GET /success renders CMS content and App download QR code."""
         self.student.kyc_status = "MIN_KYC"
         self.student.save()
 
@@ -242,6 +260,19 @@ class PortalTestCase(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Registration Successful!")
+        self.assertContains(response, "app_download_qr.png")
+        self.assertContains(response, "Scan to Download")
+
+    def test_portal_landing_redirects_completed_student(self):
+        """Test GET /portal/<tracking_id>/ redirects to success if student already completed MIN KYC."""
+        self.student.kyc_status = "MIN_KYC"
+        self.student.save()
+
+        response = self.client.get(
+            reverse('portal:landing', kwargs={'tracking_id': self.student.tracking_id})
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, reverse('portal:success', kwargs={'tracking_id': self.student.tracking_id}))
 
     @patch('requests.post')
     def test_aadhaar_client_no_masking(self, mock_post):
@@ -375,3 +406,189 @@ class PortalTestCase(TestCase):
 
         self.student.refresh_from_db()
         self.assertTrue(self.student.otp_locked)
+
+    def test_format_m2p_error_helper(self):
+        """Test format_m2p_error cleanly extracts human-readable error messages."""
+        from m2p.client import format_m2p_error
+
+        # 1. User's exact Y409 corporate issuance duplicate error
+        y409_payload = {
+            "result": None,
+            "exception": {
+                "cause": None,
+                "message": None,
+                "errorCode": "Y409",
+                "suppressed": [],
+                "fieldErrors": None,
+                "languageCode": "en",
+                "shortMessage": "Corporate Issuance already exist for application number: APP-377973430902",
+                "detailMessage": "Corporate Issuance already exist for application number: APP-377973430902",
+                "localizedMessage": None
+            },
+            "pagination": None
+        }
+        extracted = format_m2p_error(y409_payload)
+        self.assertEqual(
+            extracted, 
+            "Corporate Issuance already exist for application number: APP-377973430902 (Code: Y409)"
+        )
+
+        # 2. String exception
+        self.assertEqual(format_m2p_error({"exception": "Invalid OTP code"}), "Invalid OTP code")
+
+        # 3. Field errors list
+        fe_payload = {
+            "exception": {
+                "errorCode": "Y400",
+                "fieldErrors": [{"message": "Mobile number is invalid"}]
+            }
+        }
+        self.assertEqual(format_m2p_error(fe_payload), "Mobile number is invalid (Code: Y400)")
+
+    @patch('m2p.client.M2PClient.register_min_kyc')
+    def test_m2p_otp_submission_with_y409_error_display(self, mock_m2p_register):
+        """Test POST /portal/<tracking_id>/otp/ formats M2P Y409 error properly on page."""
+        self.student.aadhaar_verified = True
+        self.student.save()
+
+        mock_m2p_register.return_value = {
+            "result": None,
+            "exception": {
+                "cause": None,
+                "message": None,
+                "errorCode": "Y409",
+                "suppressed": [],
+                "fieldErrors": None,
+                "languageCode": "en",
+                "shortMessage": "Corporate Issuance already exist for application number: APP-377973430902",
+                "detailMessage": "Corporate Issuance already exist for application number: APP-377973430902",
+                "localizedMessage": None
+            },
+            "pagination": None
+        }
+
+        response = self.client.post(
+            reverse('portal:otp_verify', kwargs={'tracking_id': self.student.tracking_id}),
+            data={"otp": "123456"}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Corporate Issuance already exist for application number: APP-377973430902")
+        self.assertContains(response, "Code: Y409")
+        # Ensure raw dict representation is not shown
+        self.assertNotContains(response, "{'cause': None")
+
+    @patch('m2p.client.M2PClient.generate_otp')
+    def test_m2p_resend_otp_success(self, mock_generate_otp):
+        """Test POST /portal/<tracking_id>/m2p/resend-otp/ succeeds when Aadhaar is verified."""
+        self.student.aadhaar_verified = True
+        self.student.save()
+
+        mock_generate_otp.return_value = {"success": True, "result": {"success": True}}
+
+        response = self.client.post(
+            reverse('portal:m2p_resend_otp', kwargs={'tracking_id': self.student.tracking_id}),
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["success"])
+        self.assertIn("A new OTP has been sent", data["message"])
+
+    def test_m2p_resend_otp_aadhaar_not_verified(self):
+        """Test POST /portal/<tracking_id>/m2p/resend-otp/ returns 400 if Aadhaar is not verified."""
+        self.student.aadhaar_verified = False
+        self.student.save()
+
+        response = self.client.post(
+            reverse('portal:m2p_resend_otp', kwargs={'tracking_id': self.student.tracking_id}),
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.json()["success"])
+
+    def test_m2p_resend_otp_locked_user(self):
+        """Test POST /portal/<tracking_id>/m2p/resend-otp/ returns 403 if user is locked."""
+        self.student.aadhaar_verified = True
+        self.student.otp_locked = True
+        self.student.save()
+
+        response = self.client.post(
+            reverse('portal:m2p_resend_otp', kwargs={'tracking_id': self.student.tracking_id}),
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(response.json()["locked"])
+
+    def test_portal_views_never_cache_headers(self):
+        """Test that portal views send Cache-Control headers preventing stale bfcache loading."""
+        # 1. Landing view
+        res_landing = self.client.get(
+            reverse('portal:landing', kwargs={'tracking_id': self.student.tracking_id})
+        )
+        cache_ctrl = res_landing.headers.get('Cache-Control', '')
+        self.assertIn('no-cache', cache_ctrl)
+        self.assertIn('no-store', cache_ctrl)
+
+        # 2. Success view (for verified student)
+        self.student.kyc_status = 'MIN_KYC'
+        self.student.save()
+        res_success = self.client.get(
+            reverse('portal:success', kwargs={'tracking_id': self.student.tracking_id})
+        )
+        cache_ctrl_success = res_success.headers.get('Cache-Control', '')
+        self.assertIn('no-cache', cache_ctrl_success)
+        self.assertIn('no-store', cache_ctrl_success)
+
+        # 3. Locked view (for locked student)
+        self.student.otp_locked = True
+        self.student.save()
+        res_locked = self.client.get(
+            reverse('portal:locked', kwargs={'tracking_id': self.student.tracking_id})
+        )
+        cache_ctrl_locked = res_locked.headers.get('Cache-Control', '')
+        self.assertIn('no-cache', cache_ctrl_locked)
+        self.assertIn('no-store', cache_ctrl_locked)
+
+    def test_completed_kyc_back_navigation_redirects(self):
+        """Test that already completed KYC students attempting back navigation to forms get redirected to success."""
+        self.student.kyc_status = 'MIN_KYC'
+        self.student.aadhaar_verified = True
+        self.student.save()
+
+        # 1. Back to landing page -> redirects to success
+        res_landing = self.client.get(
+            reverse('portal:landing', kwargs={'tracking_id': self.student.tracking_id})
+        )
+        self.assertRedirects(res_landing, reverse('portal:success', kwargs={'tracking_id': self.student.tracking_id}))
+
+        # 2. Back to OTP verify GET -> redirects to success
+        res_otp_get = self.client.get(
+            reverse('portal:otp_verify', kwargs={'tracking_id': self.student.tracking_id})
+        )
+        self.assertRedirects(res_otp_get, reverse('portal:success', kwargs={'tracking_id': self.student.tracking_id}))
+
+        # 3. Re-post OTP verify POST -> redirects to success
+        res_otp_post = self.client.post(
+            reverse('portal:otp_verify', kwargs={'tracking_id': self.student.tracking_id}),
+            data={"otp": "123456"}
+        )
+        self.assertRedirects(res_otp_post, reverse('portal:success', kwargs={'tracking_id': self.student.tracking_id}))
+
+        # 4. Aadhaar Send OTP POST -> rejected with 400 and redirect_url
+        res_aadhaar_send = self.client.post(
+            reverse('portal:aadhaar_send_otp', kwargs={'tracking_id': self.student.tracking_id}),
+            data=json.dumps({"aadhaar_number": "123456789012"}),
+            content_type='application/json'
+        )
+        self.assertEqual(res_aadhaar_send.status_code, 400)
+        self.assertIn(reverse('portal:success', kwargs={'tracking_id': self.student.tracking_id}), res_aadhaar_send.json().get('redirect_url', ''))
+
+        # 5. Aadhaar Verify OTP POST -> rejected with 400 and redirect_url
+        res_aadhaar_verify = self.client.post(
+            reverse('portal:aadhaar_verify_otp', kwargs={'tracking_id': self.student.tracking_id}),
+            data=json.dumps({"otp": "123456", "ref_id": "REF-1"}),
+            content_type='application/json'
+        )
+        self.assertEqual(res_aadhaar_verify.status_code, 400)
+        self.assertIn(reverse('portal:success', kwargs={'tracking_id': self.student.tracking_id}), res_aadhaar_verify.json().get('redirect_url', ''))
+

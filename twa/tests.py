@@ -417,6 +417,7 @@ class TWATestCase(TestCase):
         self.student.aadhaar_number = "9012"
         self.student.aadhaar_ref_id = "REF-MOCK-A1"
         self.student.otp_attempt_count = 0
+        self.student.kyc_status = "PENDING"
         self.student.save()
 
         mock_verify_otp.return_value = {"status": "SUCCESS", "data": {"name": "Vikesh Sharma TWA"}}

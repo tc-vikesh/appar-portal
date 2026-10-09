@@ -11,12 +11,16 @@
 {% endblock %}
 
 {% block content %}
-<div style="background: rgba(239, 68, 68, 0.05); border: 1px dashed rgba(239, 68, 68, 0.25); border-radius: 16px; padding: 24px; margin-bottom: 30px; text-align: left;">
-    <p style="color: var(--text-main); font-weight: 600; margin-bottom: 8px;">Why is this locked?</p>
+<div style="background: rgba(239, 68, 68, 0.05); border: 1px dashed rgba(239, 68, 68, 0.25); border-radius: 16px; padding: 24px; margin-bottom: 24px; text-align: left;">
+    <p style="color: var(--text-main); font-weight: 600; margin-bottom: 8px;">Why was this locked?</p>
     <p style="font-size: 13.5px; margin-bottom: 0;">
-        For data protection, the verification process locks after <strong>3 failed OTP attempts</strong>. To regenerate an onboarding request and unlock your card, please contact your university administrator or open your student portal.
+        For security, the session was temporarily paused after <strong>3 failed OTP attempts</strong>. You can restart the onboarding process with a fresh verification attempt by clicking the button below.
     </p>
 </div>
+
+<a href="{% url 'portal:landing' student.tracking_id %}" class="btn" style="margin-bottom: 24px;">
+    Try Again / Restart Verification
+</a>
 
 <p style="font-size: 12px; text-align: center; color: var(--text-muted); margin-bottom: 0;">
     Reference ID: <strong style="color: var(--text-main);">{{ student.tracking_id }}</strong>
