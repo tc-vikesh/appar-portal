@@ -242,16 +242,16 @@ class M2PClient:
                 }
             ],
             "kycInfo": [
-                # {
-                #     "documentType": "AADHAARREF",
-                #     "documentNo": aadhaar_number,
-                #     "documentExpiry": "2099-03-01"
-                # }
                 {
-                    "documentType": "PAN",
-                    "documentNo": random_pan,
+                    "documentType": "AADHAARREF",
+                    "documentNo": aadhaar_number,
                     "documentExpiry": "2099-03-01"
                 }
+                # {
+                #     "documentType": "PAN",
+                #     "documentNo": random_pan,
+                #     "documentExpiry": "2099-03-01"
+                # }
             ],
             "dateInfo": [
                 {
