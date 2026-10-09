@@ -66,9 +66,15 @@ class AadhaarSendOTPView(View):
             success = resp.get("status") == "SUCCESS"
             
             if success:
+                # Safely extract last 4 digits of Aadhaar
+                aadhaar_last_4 = ""
+                if aadhaar_number and len(aadhaar_number) >= 4:
+                    aadhaar_last_4 = aadhaar_number[-4:]
+                elif aadhaar_number:
+                    aadhaar_last_4 = aadhaar_number
                 ref_id = resp.get("ref_id") or resp.get("data", {}).get("ref_id")
                 # Save aadhaar number, ref_id, and consents on student record
-                student.aadhaar_number = aadhaar_number
+                student.aadhaar_number = aadhaar_last_4
                 student.aadhaar_ref_id = ref_id
                 student.consent_aadhaar_ovd = consent_aadhaar_ovd
                 student.consent_ckycr = consent_ckycr
