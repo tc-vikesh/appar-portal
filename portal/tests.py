@@ -47,6 +47,7 @@ class PortalTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'portal/landing.html')
         self.assertContains(response, self.student.full_name)
+        self.assertContains(response, 'href="https://transcorpint.com/wp-content/uploads/2026/06/transcorp-ppi-mitc.pdf"')
 
     def test_portal_landing_unblocks_locked_student(self):
         """Test GET /portal/<tracking_id>/ unblocks a locked student and restarts journey with empty Aadhaar input."""
