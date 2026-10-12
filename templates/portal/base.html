@@ -96,7 +96,7 @@
             left: 0;
             width: 100%;
             display: flex;
-            justify-content: space-between;
+            justify-content: flex-end;
             padding: 0 32px;
             font-size: 13px;
             font-weight: 500;
@@ -130,29 +130,6 @@
             transition: var(--transition-smooth);
             animation: cardAppear 0.5s ease-out;
             z-index: 10;
-        }
-
-        .card-close-btn {
-            position: absolute;
-            top: 20px;
-            right: 22px;
-            width: 28px;
-            height: 28px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: rgba(15, 23, 42, 0.4);
-            font-size: 20px;
-            line-height: 1;
-            cursor: pointer;
-            border-radius: 50%;
-            transition: var(--transition-smooth);
-            user-select: none;
-        }
-
-        .card-close-btn:hover {
-            color: #0f172a;
-            background: rgba(0, 0, 0, 0.05);
         }
 
         /* Typography */
@@ -572,13 +549,10 @@
 </head>
 <body>
     <div class="top-nav-bar">
-        <span>@transcorp</span>
         <span>Transcorp APAAR Portal</span>
     </div>
 
     <div class="glass-card">
-        <div class="card-close-btn" aria-label="Portal">×</div>
-        
         <div class="brand-header">
             <div class="brand-logo-wrap">
                 <img src="https://transcorpint.com/assets/images/logo.png" 
