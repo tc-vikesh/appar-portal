@@ -69,6 +69,24 @@ def format_m2p_error(error_data, default_message="KYC verification request faile
 
     return default_message
 
+def mask_aadhaar_in_payload(payload):
+    """
+    Recursively masks any Aadhaar number in payload so only the last 4 digits are stored in logs.
+    """
+    if not isinstance(payload, dict):
+        return payload
+    sanitized = {}
+    for k, v in payload.items():
+        if k in ("aadhaar_number", "aadhaar_no", "documentNo") and isinstance(v, str):
+            sanitized[k] = v[-4:] if len(v) >= 4 else v
+        elif isinstance(v, dict):
+            sanitized[k] = mask_aadhaar_in_payload(v)
+        elif isinstance(v, list):
+            sanitized[k] = [mask_aadhaar_in_payload(item) if isinstance(item, dict) else item for item in v]
+        else:
+            sanitized[k] = v
+    return sanitized
+
 class M2PClient:
     """
     Client for interacting with the M2P UAT/Prod endpoints.
@@ -308,7 +326,7 @@ class M2PClient:
                 {
                     "documentType": "AADHAARREF",
                     # "documentNo": aadhaar_number,
-                    "documentNo": random.randint(1000, 9999),
+                    "documentNo": str(random.randint(1000, 9999)),
                     "documentExpiry": "2099-03-01"
                 }
                 # {
@@ -380,6 +398,6 @@ class M2PClient:
 
         finally:
             # Measure duration and complete audit save in finally block (Constitution P1)
-            log.request_payload = request_payload
+            log.request_payload = mask_aadhaar_in_payload(request_payload)
             log.duration_ms = int((time.monotonic() - start) * 1000)
             log.save()

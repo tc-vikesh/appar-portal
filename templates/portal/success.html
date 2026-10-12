@@ -1,53 +1,87 @@
 {% extends 'portal/base.html' %}
 {% load static %}
 
-{% block title %}KYC Verified Successfully{% endblock %}
+{% block title %}You're All Set! - Transcorp APAAR Portal{% endblock %}
 
 {% block header %}
-<div class="success-icon" style="font-size: 55px; color: var(--success); margin-bottom: 20px; animation: pulse 2s infinite;">
-    ✓
+<div class="stack-badge-wrap">
+    <svg width="120" height="96" viewBox="0 0 120 96" fill="none" xmlns="http://www.w3.org/2000/svg" class="stack-badge-svg">
+        <!-- Soft green ambient shadow -->
+        <ellipse cx="60" cy="74" rx="42" ry="14" fill="rgba(34, 197, 94, 0.2)" filter="blur(8px)"/>
+        
+        <!-- Bottom frosted glass slab -->
+        <path d="M60 42 L95 58 L60 74 L25 58 Z" fill="rgba(255, 255, 255, 0.65)" stroke="rgba(255, 255, 255, 0.9)" stroke-width="1.5"/>
+        <path d="M25 58 L60 74 L60 78 L25 62 Z" fill="rgba(200, 235, 220, 0.75)"/>
+        <path d="M95 58 L60 74 L60 78 L95 62 Z" fill="rgba(180, 225, 210, 0.75)"/>
+        
+        <!-- Middle vibrant green slab -->
+        <path d="M60 26 L95 42 L60 58 L25 42 Z" fill="url(#successGradient)" stroke="rgba(255, 255, 255, 0.85)" stroke-width="1.5"/>
+        <path d="M25 42 L60 58 L60 64 L25 48 Z" fill="#15803d"/>
+        <path d="M95 42 L60 58 L60 64 L95 48 Z" fill="#166534"/>
+        
+        <!-- Top frosted circular disc -->
+        <circle cx="60" cy="38" r="16" fill="rgba(255, 255, 255, 0.9)" stroke="#ffffff" stroke-width="2"/>
+        
+        <!-- Checkmark icon inside circle -->
+        <path d="M54 38 L58 42 L67 33" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        
+        <defs>
+            <linearGradient id="successGradient" x1="25" y1="26" x2="95" y2="58" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#86efac"/>
+                <stop offset="0.5" stop-color="#4ade80"/>
+                <stop offset="1" stop-color="#22c55e"/>
+            </linearGradient>
+        </defs>
+    </svg>
 </div>
-<h1 class="gradient-text">{{ cms_page.title }}</h1>
-<p>Congratulations! Your Small KYC verification is complete. Your student card is now being processed for issuance.</p>
+
+<h1 class="serif-title">{{ cms_page.title|default:"Registration Successful!" }}</h1>
+<p class="subtitle"><strong>You're All Set!</strong> Congratulations, <strong>{{ student.full_name }}</strong>! Your Small KYC verification is complete. Your student card is now being processed for issuance.</p>
 {% endblock %}
 
 {% block content %}
 <!-- Renders CMSPage Dynamic Content -->
-<div class="cms-content" style="text-align: left; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--card-border); border-radius: 16px; padding: 24px; margin-bottom: 30px;">
+<div class="cms-content-card">
     {{ dynamic_content|safe }}
 </div>
 
-<div class="download-section" style="display: grid; grid-template-columns: 180px 1fr; gap: 24px; align-items: center; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--card-border); border-radius: 18px; padding: 24px; margin-bottom: 24px; text-align: left;">
-    <div class="qr-box" style="text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px;">
-        <div style="background: #ffffff; padding: 10px; border-radius: 14px; display: inline-block; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);">
-            <img src="{% static 'images/app_download_qr.png' %}" alt="Scan to Download TransWallet App" style="width: 140px; height: 140px; display: block; border-radius: 4px;">
+<div class="download-section">
+    <div class="qr-box">
+        <div class="qr-frame">
+            <img src="{% static 'images/app_download_qr.png' %}" alt="Scan to Download TransWallet App" class="qr-img">
         </div>
-        <span style="font-size: 11.5px; font-weight: 700; color: var(--accent-secondary); text-transform: uppercase; letter-spacing: 0.5px;">Scan to Download</span>
+        <span class="qr-label">Scan to Download</span>
     </div>
     
     <div class="buttons-box">
-        <h4 style="font-size: 17px; margin-bottom: 6px; color: var(--text-main);">Get the Transcorp (TransWallet) App</h4>
-        <p style="font-size: 13.5px; color: var(--text-muted); margin-bottom: 16px; line-height: 1.5;">
-            Scan the QR code with your phone camera, or tap the direct store buttons below to download the app and complete Full KYC / Video KYC.
+        <h4 class="download-title">Get the Transcorp (TransWallet) App</h4>
+        <p class="download-desc">
+            Scan the QR code with your phone camera, or tap the direct download buttons below to install the Transcorp app and complete Full KYC / Video KYC.
         </p>
-        <div class="app-links" style="display: flex; flex-direction: column; gap: 10px;">
-            <a href="https://play.google.com/store/apps/details?id=com.transpay.transcorp_app&hl=en_IN" target="_blank" rel="noopener noreferrer" class="btn" style="background: linear-gradient(135deg, hsl(142, 70%, 40%) 0%, hsl(142, 60%, 30%) 100%); box-shadow: 0 4px 15px rgba(22, 163, 74, 0.3); padding: 13px; font-size: 14.5px;">
-                Download Transcorp App (Android)
+        <div class="app-links">
+            <a href="https://play.google.com/store/apps/details?id=com.transpay.transcorp_app&hl=en_IN" target="_blank" rel="noopener noreferrer" class="btn btn-store">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 8px;">
+                    <path d="M3.609 1.814L13.792 12 3.61 22.186a1.5 1.5 0 0 1-.61-.95V2.764a1.5 1.5 0 0 1 .609-.95zm11.3 9.072l2.368-2.368-12.184-7.03 9.816 9.398zm0 2.228l-9.816 9.398 12.184-7.03-2.368-2.368zm1.096-1.114l3.184 1.838a1.5 1.5 0 0 0 0-2.596l-3.184-1.838-1.572 1.572 1.572 1.024z"/>
+                </svg>
+                Download for Android (Google Play)
             </a>
-            <a href="https://apps.apple.com/in/app/transwallet/id6739418080" target="_blank" rel="noopener noreferrer" class="btn" style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); box-shadow: 0 4px 15px rgba(15, 23, 42, 0.3); border: 1px solid var(--card-border); padding: 13px; font-size: 14.5px;">
-                Download Transcorp App (iOS)
+            <a href="https://apps.apple.com/in/app/transwallet/id6739418080" target="_blank" rel="noopener noreferrer" class="btn btn-store">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 8px;">
+                    <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.37c.62-.75 1.04-1.8 0.92-2.85-.9.04-1.99.6-2.63 1.35-.57.65-1.06 1.72-.93 2.74 1.01.08 2.03-.5 2.64-1.24"/>
+                </svg>
+                Download for iOS (App Store)
             </a>
         </div>
     </div>
 </div>
 
-<div style="text-align: center; margin-top: 10px;">
-    <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 6px;">
-        Your Tracking ID: 
-        <strong style="color: var(--text-main); letter-spacing: 0.5px;" id="tracking-id-val">{{ student.tracking_id }}</strong>
-        <button type="button" id="btn-copy-tracking" class="btn-link" style="font-size: 12px; padding: 2px 6px; margin-left: 6px;">Copy</button>
-    </p>
-    <span id="copy-feedback" style="font-size: 11px; color: var(--success); display: none;">Copied to clipboard!</span>
+<div class="tracking-pill-container">
+    <div class="tracking-pill">
+        <span class="tracking-label">Tracking ID:</span>
+        <strong id="tracking-id-val" class="tracking-val">{{ student.tracking_id }}</strong>
+        <button type="button" id="btn-copy-tracking" class="btn-link copy-link">Copy</button>
+    </div>
+    <div id="copy-feedback" class="copy-feedback">Copied to clipboard!</div>
 </div>
 {% endblock %}
 
@@ -66,7 +100,7 @@ document.addEventListener('DOMContentLoaded', function() {
         copyBtn.addEventListener('click', function() {
             const text = trackingId.innerText.trim();
             function showSuccess() {
-                feedback.style.display = 'inline';
+                feedback.style.display = 'inline-block';
                 copyBtn.innerText = 'Copied!';
                 setTimeout(function() {
                     feedback.style.display = 'none';
@@ -102,27 +136,171 @@ document.addEventListener('DOMContentLoaded', function() {
 
 {% block extra_css %}
 <style>
-    /* Expand max-width of the glass card to allow text to display without excessive wrapping */
+    /* Expand max-width of the glass card on success page */
     .glass-card {
-        max-width: 950px !important;
+        max-width: 780px !important;
     }
     
-    /* Increase line spacing and padding for better readability */
-    .cms-content p {
+    .cms-content-card {
+        text-align: left;
+        background: rgba(255, 255, 255, 0.72);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.95);
+        border-radius: 20px;
+        padding: 24px 26px;
+        margin-bottom: 24px;
+        box-shadow: 0 4px 18px rgba(15, 23, 42, 0.03);
+        color: #334155;
+    }
+
+    .cms-content-card p {
+        text-align: left;
         line-height: 1.6;
+        margin-bottom: 14px;
+        color: #334155;
+    }
+
+    .cms-content-card h4 {
+        text-align: left;
+        font-size: 17px;
+        margin-top: 14px;
+        margin-bottom: 10px;
+        color: #0f172a;
+    }
+
+    .cms-content-card ol, .cms-content-card ul {
+        padding-left: 20px;
         margin-bottom: 16px;
     }
-    
-    .cms-content li {
-        line-height: 1.2;
-        margin-bottom: 10px;
+
+    .cms-content-card li {
+        line-height: 1.5;
+        margin-bottom: 8px;
+        color: #475569;
+        font-size: 13.5px;
+    }
+
+    .download-section {
+        display: grid;
+        grid-template-columns: 170px 1fr;
+        gap: 24px;
+        align-items: center;
+        background: rgba(255, 255, 255, 0.72);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.95);
+        border-radius: 20px;
+        padding: 24px;
+        margin-bottom: 24px;
+        box-shadow: 0 4px 18px rgba(15, 23, 42, 0.03);
+        text-align: left;
+    }
+
+    .qr-box {
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .qr-frame {
+        background: #ffffff;
+        padding: 10px;
+        border-radius: 16px;
+        display: inline-block;
+        box-shadow: 0 6px 20px rgba(15, 23, 42, 0.08);
+        border: 1px solid #e2e8f0;
+    }
+
+    .qr-img {
+        width: 130px;
+        height: 130px;
+        display: block;
+        border-radius: 6px;
+    }
+
+    .qr-label {
+        font-size: 11px;
+        font-weight: 700;
+        color: #4f46e5;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+    }
+
+    .download-title {
+        text-align: left;
+        font-size: 18px;
+        margin-bottom: 6px;
+        color: #0f172a;
+    }
+
+    .download-desc {
+        text-align: left;
+        font-size: 13.5px;
+        color: #64748b;
+        margin-bottom: 16px;
+        line-height: 1.5;
+    }
+
+    .app-links {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .btn-store {
+        padding: 12px 18px;
+        font-size: 13.5px;
+        letter-spacing: 0.1px;
+    }
+
+    .tracking-pill-container {
+        text-align: center;
+        margin-top: 14px;
+    }
+
+    .tracking-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(255, 255, 255, 0.7);
+        border: 1px solid rgba(255, 255, 255, 0.95);
+        border-radius: 999px;
+        padding: 8px 18px;
+        box-shadow: 0 2px 10px rgba(15, 23, 42, 0.04);
+        font-size: 13px;
+        color: #64748b;
+    }
+
+    .tracking-val {
+        color: #0f172a;
+        letter-spacing: 0.5px;
+    }
+
+    .copy-link {
+        font-size: 12px;
+        padding: 2px 4px;
+        margin-left: 2px;
+    }
+
+    .copy-feedback {
+        font-size: 11.5px;
+        color: #16a34a;
+        display: none;
+        margin-top: 6px;
+        font-weight: 600;
     }
     
     @media (max-width: 620px) {
         .download-section {
-            grid-template-columns: 1fr !important;
-            text-align: center !important;
-            gap: 18px !important;
+            grid-template-columns: 1fr;
+            text-align: center;
+            gap: 18px;
+        }
+        .download-title, .download-desc {
+            text-align: center;
         }
     }
 </style>
