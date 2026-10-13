@@ -325,8 +325,8 @@ class M2PClient:
             "kycInfo": [
                 {
                     "documentType": "AADHAARREF",
-                    # "documentNo": aadhaar_number,
-                    "documentNo": str(random.randint(1000, 9999)),
+                    "documentNo": aadhaar_number,
+                    #"documentNo": str(random.randint(1000, 9999)),
                     "documentExpiry": "2099-03-01"
                 }
                 # {
