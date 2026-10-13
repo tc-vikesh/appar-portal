@@ -3,68 +3,70 @@
 {% block title %}Verify OTP - {{ student.full_name }}{% endblock %}
 
 {% block header %}
-<h1 class="gradient-text">Enter Verification Code</h1>
-<p>An OTP has been sent to your registered mobile number: <strong>+91 ******{{ student.mobile|slice:"-4:" }}</strong> for Small PPI KYC verification.</p>
+<h1 class="serif-title">Enter Verification Code</h1>
+<p class="subtitle">An OTP has been sent to your registered mobile number: <strong style="color: #0f172a;">+91 ******{{ student.mobile|slice:"-4:" }}</strong> for Small PPI KYC verification.</p>
 {% endblock %}
 
 {% block content %}
 <form method="POST" action="" id="otp-form">
     {% csrf_token %}
 
-    <div id="m2p-resend-alert" class="alert-success" style="display: none; margin-bottom: 20px;"></div>
-    <div id="m2p-resend-error" class="alert-error" style="display: none; margin-bottom: 20px;"></div>
+    <div class="form-card-container">
+        <div id="m2p-resend-alert" class="alert-success" style="display: none; margin-bottom: 20px;"></div>
+        <div id="m2p-resend-error" class="alert-error" style="display: none; margin-bottom: 20px;"></div>
 
-    {% if errors.m2p %}
-    <div class="alert-error" style="align-items: flex-start;">
-        <span style="font-size: 18px; margin-right: 6px;">⚠️</span>
-        <div>
-            <strong style="display: block; margin-bottom: 2px;">Verification Failed</strong>
-            <span style="font-size: 13.5px; line-height: 1.4;">{{ errors.m2p }}</span>
+        {% if errors.m2p %}
+        <div class="alert-error" style="align-items: flex-start;">
+            <span style="font-size: 18px; margin-right: 6px;">⚠️</span>
+            <div>
+                <strong style="display: block; margin-bottom: 2px;">Verification Failed</strong>
+                <span style="font-size: 13.5px; line-height: 1.4;">{{ errors.m2p }}</span>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if errors.otp %}
+        <div class="alert-error">
+            <strong>⚠️ Required:</strong> {{ errors.otp }}
+        </div>
+        {% endif %}
+
+        <!-- Attempt indicator block -->
+        <div style="background: rgba(255, 255, 255, 0.85); border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px; margin-bottom: 22px; font-size: 13.5px; text-align: center; color: #475569;">
+            Remaining verification attempts: 
+            <strong style="color: {% if remaining_attempts <= 1 %}var(--error){% else %}var(--warning){% endif %}; font-size: 14.5px;">
+                {{ remaining_attempts }} of 3
+            </strong>
+        </div>
+
+        <div class="form-group" style="text-align: center;">
+            <label for="otp" class="form-label" style="text-align: center;">6-Digit OTP Code</label>
+            <input 
+                type="text" 
+                id="otp" 
+                name="otp" 
+                class="form-input" 
+                placeholder="000000" 
+                style="text-align: center; font-size: 26px; letter-spacing: 8px; font-weight: 700; max-width: 260px; margin: 0 auto; display: block;" 
+                autocomplete="off"
+                maxlength="6"
+                pattern="\d{6}"
+                required
+                autofocus
+            >
+        </div>
+
+        <button type="submit" id="btn-submit-m2p" class="btn" style="margin-top: 14px;">Verify & Complete Small KYC</button>
+
+        <div id="m2p-resend-container" style="margin-top: 20px; text-align: center;">
+            <span style="font-size: 13px; color: var(--text-muted);">Didn't receive the code? </span>
+            <button type="button" id="btn-resend-m2p" class="btn-link" style="display: none;">Resend OTP</button>
+            <span id="m2p-timer" style="color: #4f46e5; font-weight: 600; font-size: 13px;">Resend OTP in <span id="m2p-countdown">30</span>s</span>
         </div>
     </div>
-    {% endif %}
 
-    {% if errors.otp %}
-    <div class="alert-error">
-        <strong>⚠️ Required:</strong> {{ errors.otp }}
-    </div>
-    {% endif %}
-
-    <!-- Attempt indicator block -->
-    <div style="background: rgba(255, 255, 255, 0.03); border: 1px dashed rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 14px; margin-bottom: 24px; font-size: 13.5px; text-align: center;">
-        Remaining verification attempts: 
-        <strong style="color: {% if remaining_attempts <= 1 %}var(--error){% else %}var(--warning){% endif %}; font-size: 15px;">
-            {{ remaining_attempts }} of 3
-        </strong>
-    </div>
-
-    <div class="form-group" style="text-align: center;">
-        <label for="otp" class="form-label" style="text-align: center;">6-Digit OTP Code</label>
-        <input 
-            type="text" 
-            id="otp" 
-            name="otp" 
-            class="form-input" 
-            placeholder="000000" 
-            style="text-align: center; font-size: 26px; letter-spacing: 8px; font-weight: 700; max-width: 250px; margin: 0 auto; display: block;" 
-            autocomplete="off"
-            maxlength="6"
-            pattern="\d{6}"
-            required
-            autofocus
-        >
-    </div>
-
-    <button type="submit" id="btn-submit-m2p" class="btn" style="margin-top: 10px;">Verify & Complete Small KYC</button>
-
-    <div id="m2p-resend-container" style="margin-top: 24px; text-align: center;">
-        <span style="font-size: 13.5px; color: var(--text-muted);">Didn't receive the code? </span>
-        <button type="button" id="btn-resend-m2p" class="btn-link" style="display: none;">Resend OTP</button>
-        <span id="m2p-timer" style="color: var(--accent-secondary); font-weight: 600; font-size: 13.5px;">Resend OTP in <span id="m2p-countdown">30</span>s</span>
-    </div>
-
-    <div style="margin-top: 20px; text-align: center;">
-        <a href="{% url 'portal:landing' student.tracking_id %}" style="color: var(--text-muted); font-size: 12.5px; text-decoration: none;">
+    <div style="margin-top: 16px; text-align: center;">
+        <a href="{% url 'portal:landing' student.tracking_id %}" style="color: var(--text-muted); font-size: 12.5px; text-decoration: none; font-weight: 500;">
             ← Back to Verification Details
         </a>
     </div>

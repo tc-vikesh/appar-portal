@@ -3,8 +3,8 @@
 {% block title %}Verify Identity - {{ student.full_name }}{% endblock %}
 
 {% block header %}
-<h1 class="gradient-text">Verify Your Identity</h1>
-<p>Welcome, {{ student.full_name }}. To issue your Transcorp Student Card, please verify your details and verify your Aadhaar number below.</p>
+<h1 class="serif-title">Verify Your Identity</h1>
+<p class="subtitle">Welcome, {{ student.full_name }}. To issue your Transcorp Student Card, please verify your academic records and provide Aadhaar consent below.</p>
 {% endblock %}
 
 {% block content %}
@@ -110,93 +110,95 @@
 <form method="POST" action="" onsubmit="return false;">
     {% csrf_token %}
 
-    <label class="checkbox-container">
-        <input type="checkbox" id="consent-aadhaar-ovd" name="consent-aadhaar-ovd">
-        <span class="checkmark"></span>
-        <span class="checkbox-text">
-            I am submitting my Aadhaar number as an Officially Valid Document (OVD) for the purpose of identity and address verification under RBI's Master Direction on KYC. I authorise Transcorp, directly or through its authorised third-party KYC/document-verification service provider, to validate the authenticity and details of this OVD solely for the purpose of opening this Small KYC PPI account.
-        </span>
-    </label>
-    
-    <label class="checkbox-container">
-        <input type="checkbox" id="consent-ckycr" name="consent-ckycr">
-        <span class="checkmark"></span>
-        <span class="checkbox-text">
-            I authorise Transcorp International Limited to (i) download/retrieve my KYC records from the Central KYC Records Registry (CKYCR) using my Aadhaar/PAN/CKYC Identifier (KIN), and (ii) upload and update my KYC records with CKYCR, in accordance with the CKYC guidelines issued by RBI/CERSAI.
-        </span>
-    </label>
+    <div class="form-card-container">
+        <label class="checkbox-container">
+            <input type="checkbox" id="consent-aadhaar-ovd" name="consent-aadhaar-ovd">
+            <span class="checkmark"></span>
+            <span class="checkbox-text">
+                I am submitting my Aadhaar number as an Officially Valid Document (OVD) for the purpose of identity and address verification under RBI's Master Direction on KYC. I authorise Transcorp, directly or through its authorised third-party KYC/document-verification service provider, to validate the authenticity and details of this OVD solely for the purpose of opening this Small KYC PPI account.
+            </span>
+        </label>
+        
+        <label class="checkbox-container">
+            <input type="checkbox" id="consent-ckycr" name="consent-ckycr">
+            <span class="checkmark"></span>
+            <span class="checkbox-text">
+                I authorise Transcorp International Limited to (i) download/retrieve my KYC records from the Central KYC Records Registry (CKYCR) using my Aadhaar/PAN/CKYC Identifier (KIN), and (ii) upload and update my KYC records with CKYCR, in accordance with the CKYC guidelines issued by RBI/CERSAI.
+            </span>
+        </label>
 
-    <label class="checkbox-container">
-        <input type="checkbox" id="consent-address-mismatch" name="consent-address-mismatch">
-        <span class="checkmark"></span>
-        <span class="checkbox-text">
-            I confirm that in case of any mismatch between the address provided by me and the address retrieved from Aadhaar, my Aadhaar-registered address shall be used for records, if required
-        </span>
-    </label>
+        <label class="checkbox-container">
+            <input type="checkbox" id="consent-address-mismatch" name="consent-address-mismatch">
+            <span class="checkmark"></span>
+            <span class="checkbox-text">
+                I confirm that in case of any mismatch between the address provided by me and the address retrieved from Aadhaar, my Aadhaar-registered address shall be used for records, if required
+            </span>
+        </label>
 
-    <label class="checkbox-container">
-        <input type="checkbox" id="consent-kyc-ppi" name="consent-kyc-ppi">
-        <span class="checkmark"></span>
-        <span class="checkbox-text">
-            I declare that all particulars and information furnished in this Application Form, and all documents provided herewith, are true, correct, complete and up to date, and that I have not withheld any material information. I understand these particulars are required under RBI's operational guidelines for issuance of Prepaid Payment Instruments (PPIs), and I undertake to furnish any further information/documents Transcorp International Limited may require. I consent to Transcorp International Limited using all information and KYC documents provided for the purpose of issuing this PPI.
-        </span>
-    </label>
-    
-    <label class="checkbox-container">
-        <input type="checkbox" id="consent-terms-conditions" name="consent-terms-conditions">
-        <span class="checkmark"></span>
-        <span class="checkbox-text">
-            I have read, understood, and agree to be bound by the Terms &amp; Conditions governing this Transcorp PPI
-        </span>
-    </label>
-    
-    <span id="error-consent" class="error-text" style="display: block; margin-top: 8px; margin-bottom: 24px;"></span>
+        <label class="checkbox-container">
+            <input type="checkbox" id="consent-kyc-ppi" name="consent-kyc-ppi">
+            <span class="checkmark"></span>
+            <span class="checkbox-text">
+                I declare that all particulars and information furnished in this Application Form, and all documents provided herewith, are true, correct, complete and up to date, and that I have not withheld any material information. I understand these particulars are required under RBI's operational guidelines for issuance of Prepaid Payment Instruments (PPIs), and I undertake to furnish any further information/documents Transcorp International Limited may require. I consent to Transcorp International Limited using all information and KYC documents provided for the purpose of issuing this PPI.
+            </span>
+        </label>
+        
+        <label class="checkbox-container">
+            <input type="checkbox" id="consent-terms-conditions" name="consent-terms-conditions">
+            <span class="checkmark"></span>
+            <span class="checkbox-text">
+                I have read, understood, and agree to be bound by the <a href="https://transcorpint.com/wp-content/uploads/2026/06/transcorp-ppi-mitc.pdf" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();">Terms &amp; Conditions</a> governing this Transcorp PPI
+            </span>
+        </label>
+        
+        <span id="error-consent" class="error-text" style="display: block; margin-top: 8px; margin-bottom: 24px;"></span>
 
-    <div class="form-group">
-        <label for="aadhaar_number" class="form-label">Enter Aadhaar Number (12 Digits)</label>
-        <div class="input-with-button">
+        <div class="form-group">
+            <label for="aadhaar_number" class="form-label">Enter Aadhaar Number (12 Digits)</label>
+            <div class="input-with-button">
+                <input 
+                    type="text" 
+                    id="aadhaar_number" 
+                    name="aadhaar_number" 
+                    class="form-input" 
+                    placeholder="123456789012" 
+                    value="" 
+                    autocomplete="off"
+                    maxlength="12"
+                >
+                <button type="button" id="btn-verify-aadhaar" class="btn btn-inline">Verify Aadhaar</button>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+                <span id="error-aadhaar" class="error-text"></span>
+                <button type="button" id="btn-edit-aadhaar" class="btn-link" style="font-size: 12.5px; padding: 2px 0; display: none;">Change Aadhaar number</button>
+            </div>
+        </div>
+
+        <!-- OTP verification container -->
+        <div id="otp-container" class="form-group" style="display: none; margin-top: 24px; animation: fadeIn 0.4s ease-out; background: rgba(255, 255, 255, 0.95); border: 1.5px solid #e2e8f0; border-radius: 18px; padding: 22px; box-shadow: 0 4px 16px rgba(15,23,42,0.04);">
+            <div id="otp-status-banner" style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 12px; padding: 12px 14px; margin-bottom: 18px; font-size: 13.5px; text-align: left; color: #065f46;">
+                <span style="font-weight: 700;">✅ OTP Triggered!</span> An Aadhaar OTP has been sent to your UIDAI registered mobile number.
+            </div>
+            
+            <label for="otp" class="form-label" style="text-align: center;">6-Digit Aadhaar OTP Code</label>
             <input 
                 type="text" 
-                id="aadhaar_number" 
-                name="aadhaar_number" 
+                id="otp" 
+                name="otp" 
                 class="form-input" 
-                placeholder="123456789012" 
-                value="" 
+                placeholder="000000" 
+                style="text-align: center; font-size: 26px; letter-spacing: 8px; font-weight: 700; max-width: 250px; margin: 0 auto 16px auto; display: block;" 
                 autocomplete="off"
-                maxlength="12"
+                maxlength="6"
             >
-            <button type="button" id="btn-verify-aadhaar" class="btn btn-inline">Verify Aadhaar</button>
-        </div>
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
-            <span id="error-aadhaar" class="error-text"></span>
-            <button type="button" id="btn-edit-aadhaar" class="btn-link" style="font-size: 12.5px; padding: 2px 0; display: none;">Change Aadhaar number</button>
-        </div>
-    </div>
+            <span id="error-otp" class="error-text" style="text-align: center; display: block; margin-bottom: 16px;"></span>
+            <button type="button" id="btn-confirm-otp" class="btn" style="max-width: 250px; margin: 0 auto; display: block;">Confirm OTP</button>
 
-    <!-- OTP verification container -->
-    <div id="otp-container" class="form-group" style="display: none; margin-top: 24px; animation: fadeIn 0.4s ease-out;">
-        <div id="otp-status-banner" style="background: rgba(255, 255, 255, 0.03); border: 1px dashed rgba(255, 255, 255, 0.15); border-radius: 12px; padding: 14px; margin-bottom: 18px; font-size: 13.5px; text-align: left;">
-            <span style="color: var(--accent-secondary); font-weight: 600;">✅ OTP Triggered!</span> An Aadhaar OTP has been sent to your UIDAI registered mobile number.
-        </div>
-        
-        <label for="otp" class="form-label" style="text-align: center;">6-Digit Aadhaar OTP Code</label>
-        <input 
-            type="text" 
-            id="otp" 
-            name="otp" 
-            class="form-input" 
-            placeholder="000000" 
-            style="text-align: center; font-size: 26px; letter-spacing: 8px; font-weight: 700; max-width: 250px; margin: 0 auto 16px auto; display: block;" 
-            autocomplete="off"
-            maxlength="6"
-        >
-        <span id="error-otp" class="error-text" style="text-align: center; display: block; margin-bottom: 16px;"></span>
-        <button type="button" id="btn-confirm-otp" class="btn" style="max-width: 250px; margin: 0 auto; display: block;">Confirm OTP</button>
-
-        <div id="aadhaar-resend-container" style="margin-top: 18px; text-align: center; font-size: 13.5px;">
-            <span style="color: var(--text-muted);">Didn't receive code? </span>
-            <button type="button" id="btn-resend-aadhaar" class="btn-link" style="display: none;">Resend OTP</button>
-            <span id="aadhaar-timer" style="color: var(--accent-secondary); font-weight: 600;">Resend OTP in <span id="aadhaar-countdown">30</span>s</span>
+            <div id="aadhaar-resend-container" style="margin-top: 18px; text-align: center; font-size: 13.5px;">
+                <span style="color: var(--text-muted);">Didn't receive code? </span>
+                <button type="button" id="btn-resend-aadhaar" class="btn-link" style="display: none;">Resend OTP</button>
+                <span id="aadhaar-timer" style="color: #4f46e5; font-weight: 600;">Resend OTP in <span id="aadhaar-countdown">30</span>s</span>
+            </div>
         </div>
     </div>
 </form>
@@ -209,56 +211,43 @@
         max-width: 650px !important;
     }
     
-    .info-section-title {
-        font-family: 'Outfit', sans-serif;
-        font-size: 13px;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        color: var(--accent-secondary);
-        margin: 20px 0 10px 0;
-        padding-bottom: 4px;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-        grid-column: span 2;
-    }
-    
     .profile-photo-container {
         display: flex;
         justify-content: center;
         align-items: center;
-        margin-bottom: 24px;
+        margin-bottom: 22px;
     }
     
     .profile-photo {
-        width: 110px;
-        height: 110px;
+        width: 100px;
+        height: 100px;
         border-radius: 50%;
         object-fit: cover;
-        border: 2px solid var(--accent-secondary);
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+        border: 3px solid #ffffff;
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
     }
     
     .info-value.address {
-        line-height: 1.4;
+        line-height: 1.45;
     }
 
     .input-with-button {
         display: flex;
-        gap: 12px;
+        gap: 10px;
         align-items: center;
     }
     
     .input-with-button .form-input {
         flex: 1;
         margin-bottom: 0;
-        height: 50px;
+        height: 48px;
     }
     
     .btn-inline {
         margin-top: 0 !important;
         white-space: nowrap;
-        padding: 0 24px;
-        height: 50px;
+        padding: 0 22px;
+        height: 48px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -267,7 +256,7 @@
     }
     
     .error-text {
-        color: var(--error);
+        color: #e11d48;
         font-size: 12.5px;
         margin-top: 6px;
         display: none;

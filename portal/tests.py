@@ -47,6 +47,7 @@ class PortalTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'portal/landing.html')
         self.assertContains(response, self.student.full_name)
+        self.assertContains(response, 'href="https://transcorpint.com/wp-content/uploads/2026/06/transcorp-ppi-mitc.pdf"')
 
     def test_portal_landing_unblocks_locked_student(self):
         """Test GET /portal/<tracking_id>/ unblocks a locked student and restarts journey with empty Aadhaar input."""
@@ -275,8 +276,8 @@ class PortalTestCase(TestCase):
         self.assertRedirects(response, reverse('portal:success', kwargs={'tracking_id': self.student.tracking_id}))
 
     @patch('requests.post')
-    def test_aadhaar_client_no_masking(self, mock_post):
-        """Test AadhaarClient logging creates an UNMASKED AadhaarApiLog entry."""
+    def test_aadhaar_client_logs_last_4_digits_only(self, mock_post):
+        """Test AadhaarClient logging stores only the last 4 digits of Aadhaar in logs."""
         from applications.aadhaar_client import AadhaarClient
 
         mock_resp = MagicMock()
@@ -291,6 +292,9 @@ class PortalTestCase(TestCase):
         response = client.aadhaar_send_otp("123456789012", self.student)
         self.assertEqual(response.get("ref_id"), "REAL-AADHAAR-REF-12345")
 
+        # Verify the actual outbound HTTP request payload to Cashfree contained the full 12 digits
+        self.assertEqual(mock_post.call_args[1]['json']['aadhaar_number'], "123456789012")
+
         log = AadhaarApiLog.objects.first()
         self.assertIsNotNone(log)
         self.assertEqual(log.student, self.student)
@@ -298,8 +302,8 @@ class PortalTestCase(TestCase):
         self.assertEqual(log.http_status, 200)
         self.assertTrue(log.success)
 
-        # Assert Aadhaar number is NOT masked in the logged payload (User request)
-        self.assertEqual(log.request_payload.get("aadhaar_number"), "123456789012")
+        # Assert only the last 4 digits of Aadhaar are stored in the logged payload
+        self.assertEqual(log.request_payload.get("aadhaar_number"), "9012")
 
     def test_m2p_otp_page_get_secure(self):
         """Test GET /portal/<tracking_id>/otp/ redirects to landing if Aadhaar not verified."""

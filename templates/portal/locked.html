@@ -1,28 +1,109 @@
 {% extends 'portal/base.html' %}
 
-{% block title %}Verification Locked{% endblock %}
+{% block title %}Something Went Wrong - Verification Locked{% endblock %}
 
 {% block header %}
-<div class="locked-icon">
-    🔒
+<div class="stack-badge-wrap">
+    <svg width="120" height="96" viewBox="0 0 120 96" fill="none" xmlns="http://www.w3.org/2000/svg" class="stack-badge-svg">
+        <!-- Soft red ambient shadow -->
+        <ellipse cx="60" cy="74" rx="42" ry="14" fill="rgba(225, 29, 72, 0.2)" filter="blur(8px)"/>
+        
+        <!-- Bottom frosted glass slab -->
+        <path d="M60 42 L95 58 L60 74 L25 58 Z" fill="rgba(255, 255, 255, 0.65)" stroke="rgba(255, 255, 255, 0.9)" stroke-width="1.5"/>
+        <path d="M25 58 L60 74 L60 78 L25 62 Z" fill="rgba(240, 215, 225, 0.75)"/>
+        <path d="M95 58 L60 74 L60 78 L95 62 Z" fill="rgba(230, 200, 215, 0.75)"/>
+        
+        <!-- Middle vibrant rose slab -->
+        <path d="M60 26 L95 42 L60 58 L25 42 Z" fill="url(#errorGradient)" stroke="rgba(255, 255, 255, 0.85)" stroke-width="1.5"/>
+        <path d="M25 42 L60 58 L60 64 L25 48 Z" fill="#be123c"/>
+        <path d="M95 42 L60 58 L60 64 L95 48 Z" fill="#9f1239"/>
+        
+        <!-- Top frosted circular disc -->
+        <circle cx="60" cy="38" r="16" fill="rgba(255, 255, 255, 0.9)" stroke="#ffffff" stroke-width="2"/>
+        
+        <!-- Sad face / Lock icon inside circle -->
+        <circle cx="55" cy="36" r="1.5" fill="#e11d48"/>
+        <circle cx="65" cy="36" r="1.5" fill="#e11d48"/>
+        <path d="M54 43 Q60 39 66 43" stroke="#e11d48" stroke-width="2" stroke-linecap="round" fill="none"/>
+        
+        <defs>
+            <linearGradient id="errorGradient" x1="25" y1="26" x2="95" y2="58" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#fda4af"/>
+                <stop offset="0.5" stop-color="#fb7185"/>
+                <stop offset="1" stop-color="#e11d48"/>
+            </linearGradient>
+        </defs>
+    </svg>
 </div>
-<h1 class="gradient-text" style="color: var(--error);">Verification Locked</h1>
-<p>Too many invalid verification attempts. Your session has been locked for security reasons.</p>
+
+<h1 class="serif-title">Something Went Wrong</h1>
+<p class="subtitle">
+    We couldn't verify your request. Your onboarding session was temporarily paused after <strong>3 failed OTP attempts</strong>.
+</p>
 {% endblock %}
 
 {% block content %}
-<div style="background: rgba(239, 68, 68, 0.05); border: 1px dashed rgba(239, 68, 68, 0.25); border-radius: 16px; padding: 24px; margin-bottom: 24px; text-align: left;">
-    <p style="color: var(--text-main); font-weight: 600; margin-bottom: 8px;">Why was this locked?</p>
-    <p style="font-size: 13.5px; margin-bottom: 0;">
-        For security, the session was temporarily paused after <strong>3 failed OTP attempts</strong>. You can restart the onboarding process with a fresh verification attempt by clicking the button below.
+<div class="inner-glass-box" style="text-align: left; margin-bottom: 24px;">
+    <p style="color: #0f172a; font-weight: 600; margin-bottom: 6px; font-size: 14px;">Why was this locked?</p>
+    <p style="font-size: 13.5px; color: #475569; margin-bottom: 0; line-height: 1.55; text-align: left;">
+        For your account security under RBI PPI guidelines, verification attempts are limited. You can restart the onboarding process with a clean attempt by clicking the button below.
     </p>
 </div>
 
-<a href="{% url 'portal:landing' student.tracking_id %}" class="btn" style="margin-bottom: 24px;">
-    Try Again / Restart Verification
-</a>
+<div style="text-align: center; margin-bottom: 24px;">
+    <a href="{% url 'portal:landing' student.tracking_id %}" class="btn" style="max-width: 220px; margin: 0 auto; display: inline-flex;">
+        Try Again
+    </a>
+</div>
 
-<p style="font-size: 12px; text-align: center; color: var(--text-muted); margin-bottom: 0;">
-    Reference ID: <strong style="color: var(--text-main);">{{ student.tracking_id }}</strong>
-</p>
+<div class="contact-support-section" style="text-align: center; margin-top: 10px;">
+    <span style="font-size: 12.5px; color: #64748b; display: block; margin-bottom: 12px;">or contact us</span>
+    <div style="display: flex; justify-content: center; gap: 12px; margin-bottom: 20px;">
+        <a href="https://t.me/transcorp" target="_blank" rel="noopener noreferrer" class="contact-pill-btn" title="Telegram Support">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .37z"/>
+            </svg>
+        </a>
+        <a href="tel:18001039999" class="contact-pill-btn" title="Call Transcorp Helpline">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M6.62 10.79a15.053 15.053 0 006.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
+            </svg>
+        </a>
+        <a href="mailto:support@transcorpint.com" class="contact-pill-btn" title="Email Support">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
+            </svg>
+        </a>
+    </div>
+
+    <p style="font-size: 12px; color: #94a3b8; margin-bottom: 0;">
+        Reference Tracking ID: <strong style="color: #0f172a;">{{ student.tracking_id }}</strong>
+    </p>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .contact-pill-btn {
+        width: 42px;
+        height: 42px;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.7);
+        border: 1px solid rgba(255, 255, 255, 0.95);
+        color: #475569;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
+        transition: all 0.2s ease;
+        text-decoration: none;
+    }
+
+    .contact-pill-btn:hover {
+        background: #ffffff;
+        color: #0f172a;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(15, 23, 42, 0.1);
+    }
+</style>
 {% endblock %}
