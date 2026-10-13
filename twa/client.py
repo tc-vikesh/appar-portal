@@ -33,24 +33,59 @@ class TWAClient:
 
         start = time.monotonic()
         try:
-            # Mock network latency
-            time.sleep(0.05)
-
-            # Mock TWA pull success response
-            mock_response = {
-                "success": True,
-                "data": {
-                    "tracking_id": student.tracking_id,
-                    "application_status": student.application_status,
-                    "kyc_status": student.kyc_status,
-                    "remarks": "Sync check successful (Mocked TWA pull)."
+            if url and url.startswith('http'):
+                token = getattr(settings, 'TWA_AUTH_TOKEN', '')
+                headers = {
+                    'authToken': token,
+                    'Content-Type': 'application/json'
                 }
-            }
+                from twa.crypto import encrypt_twa_payload, decrypt_twa_payload
+                req_body = payload
+                try:
+                    req_body = encrypt_twa_payload(payload)
+                except Exception:
+                    pass
 
-            log.http_status = 200
-            log.response_payload = mock_response
-            log.success = True
-            return mock_response
+                response = requests.post(url, json=req_body, headers=headers, timeout=10)
+                log.http_status = response.status_code
+
+                try:
+                    raw_body = response.json()
+                except ValueError:
+                    raw_body = {"_raw_body": response.text[:1000]}
+
+                body = raw_body
+                if isinstance(raw_body, dict) and 'encryptedData' in raw_body:
+                    try:
+                        body = decrypt_twa_payload(raw_body['encryptedData'])
+                    except Exception:
+                        pass
+
+                log.response_payload = body
+                success = 200 <= response.status_code < 300
+                log.success = success
+                if not success:
+                    log.error_message = f"Non-2xx status: {response.status_code}"
+                return body
+            else:
+                # Mock network latency
+                time.sleep(0.05)
+
+                # Mock TWA pull success response
+                mock_response = {
+                    "success": True,
+                    "data": {
+                        "tracking_id": student.tracking_id,
+                        "application_status": student.application_status,
+                        "kyc_status": student.kyc_status,
+                        "remarks": "Sync check successful (Mocked TWA pull)."
+                    }
+                }
+
+                log.http_status = 200
+                log.response_payload = mock_response
+                log.success = True
+                return mock_response
 
         except Exception as e:
             log.success = False

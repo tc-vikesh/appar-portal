@@ -97,13 +97,13 @@ class TAPTestCase(TestCase):
         self.assertEqual(data.get("status"), "success")
 
     def test_hmac_authentication_missing_headers(self):
-        """Test accessing endpoint with missing HMAC headers (returns 403 / AuthenticationFailed)."""
+        """Test accessing endpoint with missing HMAC headers (returns 401 / AuthenticationFailed)."""
         response = self.client.post(
             reverse('issuer_bank:receive_application'),
             data=self._encrypt(self.student_data),
             content_type='application/json'
         )
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
         # Confirm exactly one audit log row is created even on auth failure (Constitution P1)
         log = ABCApiLog.objects.first()
@@ -120,7 +120,7 @@ class TAPTestCase(TestCase):
             content_type='application/json',
             **headers
         )
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_hmac_authentication_expired_timestamp(self):
         """Test accessing endpoint with expired timestamp (tolerance window limit)."""
@@ -132,7 +132,7 @@ class TAPTestCase(TestCase):
             content_type='application/json',
             **headers
         )
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_hmac_authentication_invalid_signature(self):
         """Test accessing endpoint with correct headers but invalid signature."""
@@ -144,7 +144,7 @@ class TAPTestCase(TestCase):
             content_type='application/json',
             **headers
         )
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     # 2. Receive Application API Tests (Validation & Idempotency & PENDING KYC status)
     def test_receive_application_validation_rules(self):

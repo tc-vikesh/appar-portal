@@ -13,55 +13,36 @@ class ABCWebhookDispatcher:
     Per Sprint 5 requirements, all failures are caught silently (non-blocking).
     """
 
-    def dispatch_application_status_update(self, student, remarks=None):
-        """
-        Sends application processing status update to ABC.
-        Endpoint: ABC_APP_STATUS_WEBHOOK_URL or ABC_KYC_STATUS_WEBHOOK_URL fallback.
-        """
-        url = getattr(settings, 'ABC_APP_STATUS_WEBHOOK_URL', None) or getattr(settings, 'ABC_KYC_STATUS_WEBHOOK_URL', '')
-        payload = {
-            "TRACKING_ID": student.tracking_id,
-            "APAAR_ID": student.apaar_id,
-            "PROCESSING_STATUS": student.application_status,
-            "KYC_STATUS": student.kyc_status,
-            "REMARKS": remarks or "",
-            "UPDATED_AT": student.updated_at.strftime("%Y-%m-%dT%H:%M:%SZ") if student.updated_at else "",
-        }
-        if student.application_status == "ISSUED":
-            payload["CARD_DETAILS"] = {
-                "CARD_NUMBER": "1234XXXXXX5678",
-                "EXPIRY_DATE": "12/2028",
-                "ISSUE_DATE": student.updated_at.strftime("%Y-%m-%dT%H:%M:%SZ") if student.updated_at else ""
-            }
-        return self._send_webhook(
-            url=url,
-            payload=payload,
-            webhook_type='outbound_abc_app_status',
-            student=student
-        )
+    DEFAULT_WEBHOOK_URL = 'https://api-dev2abc.abcnad.in/api/v1/webhook/kyc-status'
 
-    def dispatch_kyc_status_update(self, student, remarks=None):
+    def dispatch_status_update(self, student, remarks=None):
         """
-        Sends combined application and KYC status update to ABC.
-        Endpoint: ABC_KYC_STATUS_WEBHOOK_URL
+        Sends unified application processing status and KYC status update to ABC.
+        Endpoint: ABC_KYC_STATUS_WEBHOOK_URL (or ABC_STATUS_UPDATE_WEBHOOK_URL / fallback).
         """
-        url = getattr(settings, 'ABC_KYC_STATUS_WEBHOOK_URL', '')
+        url = getattr(settings, 'ABC_KYC_STATUS_WEBHOOK_URL', None)
+        if url is None:
+            url = getattr(settings, 'ABC_STATUS_UPDATE_WEBHOOK_URL', None)
+        if url is None:
+            url = getattr(settings, 'ABC_APP_STATUS_WEBHOOK_URL', None)
+        if url is None:
+            url = self.DEFAULT_WEBHOOK_URL
+
+        kyc_date_str = ""
+        if student and student.updated_at:
+            kyc_date_str = student.updated_at.strftime("%d/%m/%Y %H:%M:%S")
+        else:
+            kyc_date_str = timezone.now().strftime("%d/%m/%Y %H:%M:%S")
+
         payload = {
-            "TRACKING_ID": student.tracking_id,
-            "APAAR_ID": student.apaar_id,
-            "PROCESSING_STATUS": student.application_status,
-            "KYC_STATUS": student.kyc_status,
+            "TRACKING_ID": student.tracking_id if student else "",
+            "APAAR_ID": student.apaar_id if student else "",
+            "PROCESSING_STATUS": (student.application_status or "").upper() if student else "",
+            "KYC_STATUS": (student.kyc_status or "").upper() if student else "",
             "REMARKS": remarks or "",
-            "KYC_DATE": student.updated_at.strftime("%Y-%m-%dT%H:%M:%SZ") if student.updated_at else "",
+            "KYC_DATE": kyc_date_str,
         }
-        
-        if student.application_status == "ISSUED":
-            payload["CARD_DETAILS"] = {
-                "CARD_NUMBER": "1234XXXXXX5678",
-                "EXPIRY_DATE": "12/2028",
-                "ISSUE_DATE": student.updated_at.strftime("%Y-%m-%dT%H:%M:%SZ") if student.updated_at else ""
-            }
-            
+
         return self._send_webhook(
             url=url,
             payload=payload,
@@ -69,21 +50,33 @@ class ABCWebhookDispatcher:
             student=student
         )
 
+    def dispatch_application_status_update(self, student, remarks=None):
+        """
+        Alias for dispatch_status_update to maintain backward compatibility.
+        """
+        return self.dispatch_status_update(student, remarks=remarks)
+
+    def dispatch_kyc_status_update(self, student, remarks=None):
+        """
+        Alias for dispatch_status_update to maintain backward compatibility.
+        """
+        return self.dispatch_status_update(student, remarks=remarks)
+
     def _send_webhook(self, url, payload, webhook_type, student):
         """
         Executes HTTP POST to the target webhook URL and logs attempt in WebhookLog.
         Catches exceptions silently (returns dict showing success status).
         """
+        from applications.views import make_json_safe
+
         if not url:
-            # If no webhook URL configured, skip network call but still write a failed log
-            # to make sure we audit that URL is missing.
             log = WebhookLog(
                 student=student,
                 tracking_id=student.tracking_id if student else 'UNKNOWN',
                 webhook_type=webhook_type,
                 direction='outbound',
                 endpoint='NOT_CONFIGURED',
-                payload=payload,
+                payload=make_json_safe(payload),
                 success=False,
                 error_message="Webhook URL is not configured in settings."
             )
@@ -97,11 +90,17 @@ class ABCWebhookDispatcher:
             webhook_type=webhook_type,
             direction='outbound',
             endpoint=url,
+            payload=make_json_safe(payload),
         )
 
-        # Masking disabled as requested
-        from applications.views import make_json_safe
-        log.payload = make_json_safe(payload)
+        # Pre-flight check for credentials
+        client_id = getattr(settings, 'ABC_CLIENT_ID', '')
+        client_secret = getattr(settings, 'ABC_CLIENT_SECRET', '')
+        if not client_id or not client_secret:
+            log.success = False
+            log.error_message = "Missing ABC_CLIENT_ID or ABC_CLIENT_SECRET in settings."
+            log.save()
+            return {"success": False, "error": "Missing client credentials"}
 
         start = time.monotonic()
         try:
@@ -109,13 +108,11 @@ class ABCWebhookDispatcher:
             import time as pytime
             import hmac
             import hashlib
-            client_id = getattr(settings, 'ABC_CLIENT_ID', '')
-            client_secret = getattr(settings, 'ABC_CLIENT_SECRET', '')
             timestamp = str(int(pytime.time()))
             msg_bytes = f"{client_id}:{timestamp}".encode('utf-8')
             sec_bytes = client_secret.encode('utf-8')
             signature = hmac.new(sec_bytes, msg_bytes, hashlib.sha256).hexdigest()
-            
+
             headers = {
                 'X-Client-ID': client_id,
                 'X-Client-Timestamp': timestamp,
@@ -123,38 +120,46 @@ class ABCWebhookDispatcher:
                 'Content-Type': 'application/json'
             }
 
-            # Encrypt Payload
-            from applications.crypto import encrypt_abc_payload
+            # Encrypt Payload using AES-256-GCM
+            from applications.crypto import encrypt_abc_payload, decrypt_abc_payload
             try:
                 encrypted_payload = encrypt_abc_payload(payload)
                 log.encrypted_payload = make_json_safe(encrypted_payload)
-            except Exception as e:
-                # If encryption fails (e.g. no key), fallback to plain payload or error out
-                encrypted_payload = payload
-                
+            except Exception as enc_err:
+                log.success = False
+                log.error_message = f"Encryption failed: {str(enc_err)}"
+                log.save()
+                return {"success": False, "error": f"Encryption failed: {str(enc_err)}"}
+
             response = requests.post(url, json=encrypted_payload, headers=headers, timeout=10)
             log.http_status = response.status_code
 
             try:
                 body = response.json()
+                # If ABC returns encrypted response, decrypt it for audit logging
+                if isinstance(body, dict) and 'encryptedData' in body:
+                    try:
+                        body = decrypt_abc_payload(body['encryptedData'])
+                    except Exception:
+                        pass
             except ValueError:
                 body = {"_raw_body": response.text[:1000]}
 
             success = 200 <= response.status_code < 300
+            if success and isinstance(body, dict) and body.get("status") == "error":
+                success = False
+
             log.success = success
             if not success:
-                log.error_message = f"Non-2xx HTTP status: {response.status_code}. Response: {body}"
+                log.error_message = f"HTTP status: {response.status_code}. Response: {body}"
 
             return {"success": success, "response": body}
 
         except Exception as exc:
             log.success = False
             log.error_message = f"{type(exc).__name__}: {str(exc)}"
-            # Silent failure: we return a failure dict instead of raising the exception
             return {"success": False, "error": str(exc)}
 
         finally:
-            # Measure duration and complete audit save in finally block (Constitution P1)
-            # Duration is not a DB column in WebhookLog, but we can set retry attributes
-            # and ALWAYS call log.save().
+            # Complete audit save in finally block (Constitution P1)
             log.save()

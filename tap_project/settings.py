@@ -142,7 +142,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 ABC_CLIENT_ID = env('ABC_CLIENT_ID', default='')
 ABC_CLIENT_SECRET = env('ABC_CLIENT_SECRET', default='')
 ABC_ENCRYPTION_KEY = env('ABC_ENCRYPTION_KEY', default='')
-ABC_KYC_STATUS_WEBHOOK_URL = env('ABC_KYC_STATUS_WEBHOOK_URL', default='')
+ABC_KYC_STATUS_WEBHOOK_URL = env('ABC_KYC_STATUS_WEBHOOK_URL', default='https://api-dev2abc.abcnad.in/api/v1/webhook/kyc-status')
 PORTAL_BASE_URL = env('PORTAL_BASE_URL', default='')
 
 # TWA Integration Security Settings

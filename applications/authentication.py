@@ -12,6 +12,9 @@ class HMACAuthentication(authentication.BaseAuthentication):
         X-Client-Timestamp
         X-Client-HMAC
     """
+    def authenticate_header(self, request):
+        return 'HMAC'
+
     def authenticate(self, request):
         client_id = request.META.get('HTTP_X_CLIENT_ID')
         timestamp = request.META.get('HTTP_X_CLIENT_TIMESTAMP')

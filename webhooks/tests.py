@@ -54,7 +54,18 @@ class WebhookDispatcherTestCase(TestCase):
         """Test successful KYC status update webhook send and WebhookLog creation."""
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {"success": True, "message": "Received"}
+        mock_response.json.return_value = {
+            "status": "success",
+            "status_code": "200",
+            "message": "Updated successfully",
+            "data": {
+                "tracking_id": self.student.tracking_id,
+                "application_number": self.student.apaar_id,
+                "processing_status": "PROCESSING",
+                "kyc_status": "MIN_KYC",
+                "remarks": "KYC verified"
+            }
+        }
         mock_post.return_value = mock_response
 
         # Call dispatcher
@@ -71,13 +82,18 @@ class WebhookDispatcherTestCase(TestCase):
         # Verify HMAC headers sent
         headers = kwargs.get("headers", {})
         self.assertIn("X-Client-ID", headers)
+        self.assertIn("X-Client-Timestamp", headers)
         self.assertIn("X-Client-HMAC", headers)
+        self.assertEqual(headers["X-Client-ID"], settings.ABC_CLIENT_ID)
         
         from applications.crypto import decrypt_abc_payload
         payload = decrypt_abc_payload(kwargs.get("json", {}).get("encryptedData"))
         self.assertEqual(payload.get("TRACKING_ID"), self.student.tracking_id)
-        self.assertEqual(payload.get("KYC_STATUS"), self.student.kyc_status)
+        self.assertEqual(payload.get("APAAR_ID"), self.student.apaar_id)
+        self.assertEqual(payload.get("PROCESSING_STATUS"), "PROCESSING")
+        self.assertEqual(payload.get("KYC_STATUS"), "MIN_KYC")
         self.assertEqual(payload.get("REMARKS"), "KYC verified")
+        self.assertIn("KYC_DATE", payload)
 
         # Verify exactly one WebhookLog outbound row is written (Constitution P1)
         log = WebhookLog.objects.filter(direction='outbound').first()
@@ -90,6 +106,53 @@ class WebhookDispatcherTestCase(TestCase):
         self.assertTrue(log.success)
 
     # 2. Dispatcher Unit Tests (Failure cases - logged silently)
+    @patch('requests.post')
+    def test_dispatch_401_unauthorized_logged(self, mock_post):
+        """Test dispatcher handles 401 Unauthorized from ABC silently, creating failed WebhookLog."""
+        mock_response = MagicMock()
+        mock_response.status_code = 401
+        mock_response.json.return_value = {"error": "Invalid HMAC signature"}
+        mock_post.return_value = mock_response
+
+        dispatcher = ABCWebhookDispatcher()
+        res = dispatcher.dispatch_kyc_status_update(self.student, "401 test")
+
+        self.assertFalse(res.get("success"))
+        log = WebhookLog.objects.filter(direction='outbound').first()
+        self.assertIsNotNone(log)
+        self.assertEqual(log.http_status, 401)
+        self.assertFalse(log.success)
+        self.assertIn("401", log.error_message)
+
+    @patch('requests.post')
+    def test_dispatch_encrypted_response_decrypted_in_log(self, mock_post):
+        """Test dispatcher decrypts encrypted ABC responses for audit logging."""
+        from applications.crypto import encrypt_abc_payload
+        encrypted_resp = encrypt_abc_payload({"status": "success", "message": "Updated successfully"})
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = encrypted_resp
+        mock_post.return_value = mock_response
+
+        dispatcher = ABCWebhookDispatcher()
+        res = dispatcher.dispatch_status_update(self.student, "Encrypted response test")
+
+        self.assertTrue(res.get("success"))
+        self.assertEqual(res.get("response", {}).get("message"), "Updated successfully")
+
+    def test_dispatch_missing_credentials_logged(self):
+        """Test dispatcher skips network call and logs failure when client credentials are missing."""
+        settings.ABC_CLIENT_ID = ""
+        dispatcher = ABCWebhookDispatcher()
+        res = dispatcher.dispatch_kyc_status_update(self.student, "Missing creds")
+
+        self.assertFalse(res.get("success"))
+        log = WebhookLog.objects.filter(direction='outbound').first()
+        self.assertIsNotNone(log)
+        self.assertFalse(log.success)
+        self.assertIn("Missing ABC_CLIENT_ID", log.error_message)
+
     @patch('requests.post')
     def test_dispatch_http_failure_logged_silently(self, mock_post):
         """Test dispatcher handles non-2xx response from ABC silently, creating failed WebhookLog."""
@@ -110,7 +173,7 @@ class WebhookDispatcherTestCase(TestCase):
         self.assertIsNotNone(log)
         self.assertEqual(log.http_status, 500)
         self.assertFalse(log.success)
-        self.assertIn("Non-2xx HTTP status: 500", log.error_message)
+        self.assertIn("500", log.error_message)
 
     @patch('requests.post')
     def test_dispatch_exception_logged_silently(self, mock_post):
