@@ -99,14 +99,17 @@ class AadhaarSendOTPView(View):
             
             if success:
                 request.session[f"last_aadhaar_otp_{tracking_id}"] = now_ts
-                # Safely extract last 4 digits of Aadhaar
+                # Store full 12 digits in session so M2P registration receives the full 12-digit number
+                request.session[f"aadhaar_full_{tracking_id}"] = aadhaar_number
+
+                # Safely extract last 4 digits of Aadhaar for database storage
                 aadhaar_last_4 = ""
                 if aadhaar_number and len(aadhaar_number) >= 4:
                     aadhaar_last_4 = aadhaar_number[-4:]
                 elif aadhaar_number:
                     aadhaar_last_4 = aadhaar_number
                 ref_id = resp.get("ref_id") or resp.get("data", {}).get("ref_id")
-                # Save aadhaar number, ref_id, and consents on student record
+                # Save aadhaar number (last 4 digits only), ref_id, and consents on student record
                 student.aadhaar_number = aadhaar_last_4
                 student.aadhaar_ref_id = ref_id
                 student.consent_aadhaar_ovd = consent_aadhaar_ovd
@@ -152,6 +155,9 @@ class AadhaarVerifyOTPView(View):
 
             otp = str(body.get('otp') or '').strip()
             ref_id = str(body.get('ref_id') or '').strip()
+            aadhaar_from_req = str(body.get('aadhaar_number') or '').strip()
+            if aadhaar_from_req and len(aadhaar_from_req) == 12:
+                request.session[f"aadhaar_full_{tracking_id}"] = aadhaar_from_req
 
             if not otp:
                 return JsonResponse({"success": False, "error": "OTP is required."}, status=400)
@@ -337,7 +343,9 @@ class OTPVerifyView(View):
         # Call M2P Client to Register MIN KYC
         m2p = M2PClient()
         try:
-            m2p_response = m2p.register_min_kyc(student, otp, student.aadhaar_number)
+            # Pass full 12-digit Aadhaar to M2P from session (fallback to student.aadhaar_number if not in session)
+            full_aadhaar = request.session.get(f"aadhaar_full_{tracking_id}") or student.aadhaar_number
+            m2p_response = m2p.register_min_kyc(student, otp, full_aadhaar)
             result_block = m2p_response.get("result") or {}
             m2p_success = (
                 not m2p_response.get("exception") and (
@@ -360,7 +368,16 @@ class OTPVerifyView(View):
 
                 # Transition statuses
                 student.kyc_status = 'MIN_KYC'
+
+                # Ensure only the last 4 digits of Aadhaar are stored in the database
+                if student.aadhaar_number and len(student.aadhaar_number) > 4:
+                    student.aadhaar_number = student.aadhaar_number[-4:]
+                elif full_aadhaar and len(full_aadhaar) >= 4:
+                    student.aadhaar_number = full_aadhaar[-4:]
                 student.save()
+
+                # Purge full 12-digit Aadhaar from session upon completion
+                request.session.pop(f"aadhaar_full_{tracking_id}", None)
 
                 # Trigger ABC webhook for KYC status update
                 dispatcher = ABCWebhookDispatcher()
@@ -398,6 +415,7 @@ class OTPVerifyView(View):
             student.otp_locked = True
             student.otp_locked_until = timezone.now() + timedelta(minutes=cooldown_mins)
             student.save()
+            request.session.pop(f"aadhaar_full_{tracking_id}", None)
             return redirect(reverse('portal:locked', kwargs={'tracking_id': tracking_id}))
         return render(request, 'portal/otp.html', {
             'student': student,

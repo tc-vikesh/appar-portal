@@ -554,7 +554,8 @@ document.addEventListener('DOMContentLoaded', function() {
             },
             body: JSON.stringify({
                 otp: otpVal,
-                ref_id: activeRefId
+                ref_id: activeRefId,
+                aadhaar_number: aadhaarInput ? aadhaarInput.value.replace(/\s+/g, '').trim() : ''
             })
         })
         .then(response => response.json().then(data => ({ status: response.status, body: data })))

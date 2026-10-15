@@ -385,10 +385,52 @@ class PortalTestCase(TestCase):
         self.assertRedirects(response, reverse('portal:success', kwargs={'tracking_id': self.student.tracking_id}))
 
         self.student.refresh_from_db()
+        # Assert full 12 digits were passed to M2P
+        self.assertEqual(mock_m2p_register.call_args[0][2], "123456789012")
         self.assertEqual(self.student.kyc_status, "MIN_KYC")
         self.assertEqual(self.student.m2p_kit_no, "KIT-TEST-999")
         self.assertEqual(self.student.m2p_token, "TOKEN-TEST-999")
+        # Assert only last 4 digits are stored in the database
+        self.assertEqual(self.student.aadhaar_number, "9012")
         self.assertTrue(self.student.twa_synced)
+
+    @patch('m2p.client.M2PClient.register_min_kyc')
+    @patch('twa.client.TWAClient.sync_onboard')
+    def test_m2p_otp_submission_uses_session_full_aadhaar(self, mock_twa_sync, mock_m2p_register):
+        """Test that full 12-digit Aadhaar from session is passed to M2P while DB retains only last 4 digits."""
+        self.student.aadhaar_verified = True
+        self.student.aadhaar_number = "9012"
+        self.student.save()
+
+        mock_m2p_register.return_value = {
+            "success": True,
+            "result": {
+                "entityId": "APAAR-E2E-99999",
+                "cardDetails": {"kitNumber": "KIT-TEST-999"},
+                "token": "TOKEN-TEST-999"
+            }
+        }
+
+        # Prime the session with the full 12 digits as stored during AadhaarSendOTPView
+        session = self.client.session
+        session[f"aadhaar_full_{self.student.tracking_id}"] = "123456789012"
+        session.save()
+
+        response = self.client.post(
+            reverse('portal:otp_verify', kwargs={'tracking_id': self.student.tracking_id}),
+            data={"otp": "123456"}
+        )
+        self.assertEqual(response.status_code, 302)
+
+        # Assert full 12 digits were passed to M2P registration
+        self.assertEqual(mock_m2p_register.call_args[0][2], "123456789012")
+
+        # Assert DB strictly retains only the last 4 digits
+        self.student.refresh_from_db()
+        self.assertEqual(self.student.aadhaar_number, "9012")
+
+        # Assert session key was cleaned up
+        self.assertNotIn(f"aadhaar_full_{self.student.tracking_id}", self.client.session)
 
     @patch('m2p.client.M2PClient.register_min_kyc')
     def test_m2p_otp_submission_fail_limit(self, mock_m2p_register):
