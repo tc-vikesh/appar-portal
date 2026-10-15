@@ -1,5 +1,7 @@
 import re
 import json
+import math
+from datetime import timedelta
 from django.shortcuts import render, redirect, get_object_or_404
 from django.views import View
 from django.contrib import messages
@@ -7,6 +9,9 @@ from django.urls import reverse
 from django.http import JsonResponse
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import never_cache
+from django.db import transaction
+from django.utils import timezone
+from django.conf import settings
 
 from applications.models import Student
 from cms.models import CMSPage
@@ -28,15 +33,9 @@ class LandingView(View):
         if student.kyc_status in ('MIN_KYC', 'FULL_KYC') or student.application_status == 'ISSUED':
             return redirect(reverse('portal:success', kwargs={'tracking_id': tracking_id}))
 
-        # If student was locked out and hits the main portal URL, unblock them
-        # and restart the verification journey with a fresh attempt
-        if student.otp_locked:
-            student.otp_locked = False
-            student.otp_attempt_count = 0
-            student.aadhaar_number = None
-            student.aadhaar_ref_id = None
-            student.aadhaar_verified = False
-            student.save()
+        # If student is locked out and cooldown is still active, redirect to locked page
+        if student.is_locked():
+            return redirect(reverse('portal:locked', kwargs={'tracking_id': tracking_id}))
 
         return render(request, 'portal/landing.html', {'student': student})
 
@@ -58,7 +57,7 @@ class AadhaarSendOTPView(View):
                 "redirect_url": reverse('portal:success', kwargs={'tracking_id': tracking_id})
             }, status=400)
 
-        if student.otp_locked:
+        if student.is_locked():
             return JsonResponse({"success": False, "error": "Verification locked due to too many failed attempts.", "locked": True}, status=403)
 
         try:
@@ -120,41 +119,45 @@ class AadhaarVerifyOTPView(View):
     AJAX endpoint to verify OTP, name-match and proceed to M2P registration.
     """
     def post(self, request, tracking_id):
-        student = get_object_or_404(Student, tracking_id=tracking_id)
+        with transaction.atomic():
+            student = Student.objects.select_for_update().get(tracking_id=tracking_id)
 
-        # If student has already completed KYC or card is issued, prevent re-verifying
-        if student.kyc_status in ('MIN_KYC', 'FULL_KYC') or student.application_status == 'ISSUED':
-            return JsonResponse({
-                "success": False, 
-                "error": "KYC verification has already been completed.",
-                "redirect_url": reverse('portal:success', kwargs={'tracking_id': tracking_id})
-            }, status=400)
+            # If student has already completed KYC or card is issued, prevent re-verifying
+            if student.kyc_status in ('MIN_KYC', 'FULL_KYC') or student.application_status == 'ISSUED':
+                return JsonResponse({
+                    "success": False, 
+                    "error": "KYC verification has already been completed.",
+                    "redirect_url": reverse('portal:success', kwargs={'tracking_id': tracking_id})
+                }, status=400)
 
-        if student.otp_locked:
-            return JsonResponse({"success": False, "error": "Verification locked.", "locked": True}, status=403)
+            if student.is_locked():
+                return JsonResponse({"success": False, "error": "Verification locked.", "locked": True}, status=403)
 
-        try:
-            body = json.loads(request.body)
-        except (ValueError, TypeError):
-            return JsonResponse({"success": False, "error": "Invalid JSON payload."}, status=400)
+            try:
+                body = json.loads(request.body)
+            except (ValueError, TypeError):
+                return JsonResponse({"success": False, "error": "Invalid JSON payload."}, status=400)
 
-        otp = body.get('otp', '').strip()
-        ref_id = body.get('ref_id', '').strip()
+            otp = body.get('otp', '').strip()
+            ref_id = body.get('ref_id', '').strip()
 
-        if not otp:
-            return JsonResponse({"success": False, "error": "OTP is required."}, status=400)
-        if not ref_id:
-            return JsonResponse({"success": False, "error": "Reference ID is missing."}, status=400)
+            if not otp:
+                return JsonResponse({"success": False, "error": "OTP is required."}, status=400)
+            if not ref_id:
+                return JsonResponse({"success": False, "error": "Reference ID is missing."}, status=400)
 
-        # Increment attempt count
-        student.otp_attempt_count += 1
-        student.save()
+            # Increment attempt count
+            student.otp_attempt_count += 1
 
-        # Check attempt limit
-        if student.otp_attempt_count > 3:
-            student.otp_locked = True
+            # Check attempt limit
+            if student.otp_attempt_count > 3:
+                cooldown_mins = getattr(settings, 'OTP_LOCKOUT_MINUTES', 15)
+                student.otp_locked = True
+                student.otp_locked_until = timezone.now() + timedelta(minutes=cooldown_mins)
+                student.save()
+                return JsonResponse({"success": False, "error": "Too many failed attempts. Verification locked.", "locked": True}, status=403)
+
             student.save()
-            return JsonResponse({"success": False, "error": "Too many failed attempts. Verification locked.", "locked": True}, status=403)
 
         client = AadhaarClient()
         try:
@@ -166,7 +169,9 @@ class AadhaarVerifyOTPView(View):
                 err_msg = verify_resp.get("message") or "Invalid Aadhaar OTP code."
                 # If they hit 3 attempts exactly and failed, lock them out
                 if student.otp_attempt_count >= 3:
+                    cooldown_mins = getattr(settings, 'OTP_LOCKOUT_MINUTES', 15)
                     student.otp_locked = True
+                    student.otp_locked_until = timezone.now() + timedelta(minutes=cooldown_mins)
                     student.save()
                     return JsonResponse({"success": False, "error": err_msg, "locked": True}, status=403)
                 
@@ -250,7 +255,7 @@ class OTPVerifyView(View):
         if not student.aadhaar_verified:
             return redirect(reverse('portal:landing', kwargs={'tracking_id': tracking_id}))
 
-        if student.otp_locked:
+        if student.is_locked():
             return redirect(reverse('portal:locked', kwargs={'tracking_id': tracking_id}))
 
         remaining_attempts = max(3 - student.otp_attempt_count, 0)
@@ -260,39 +265,43 @@ class OTPVerifyView(View):
         })
 
     def post(self, request, tracking_id):
-        student = get_object_or_404(Student, tracking_id=tracking_id)
+        with transaction.atomic():
+            student = Student.objects.select_for_update().get(tracking_id=tracking_id)
 
-        # If student has already completed KYC or card is issued, direct them to success page
-        if student.kyc_status in ('MIN_KYC', 'FULL_KYC') or student.application_status == 'ISSUED':
-            return redirect(reverse('portal:success', kwargs={'tracking_id': tracking_id}))
+            # If student has already completed KYC or card is issued, direct them to success page
+            if student.kyc_status in ('MIN_KYC', 'FULL_KYC') or student.application_status == 'ISSUED':
+                return redirect(reverse('portal:success', kwargs={'tracking_id': tracking_id}))
 
-        if not student.aadhaar_verified:
-            return redirect(reverse('portal:landing', kwargs={'tracking_id': tracking_id}))
+            if not student.aadhaar_verified:
+                return redirect(reverse('portal:landing', kwargs={'tracking_id': tracking_id}))
 
-        if student.otp_locked:
-            return redirect(reverse('portal:locked', kwargs={'tracking_id': tracking_id}))
+            if student.is_locked():
+                return redirect(reverse('portal:locked', kwargs={'tracking_id': tracking_id}))
 
-        otp = request.POST.get('otp', '').strip()
-        errors = {}
+            otp = request.POST.get('otp', '').strip()
+            errors = {}
 
-        if not otp:
-            errors['otp'] = "OTP is required."
-            remaining_attempts = max(3 - student.otp_attempt_count, 0)
-            return render(request, 'portal/otp.html', {
-                'student': student,
-                'errors': errors,
-                'remaining_attempts': remaining_attempts
-            })
+            if not otp:
+                errors['otp'] = "OTP is required."
+                remaining_attempts = max(3 - student.otp_attempt_count, 0)
+                return render(request, 'portal/otp.html', {
+                    'student': student,
+                    'errors': errors,
+                    'remaining_attempts': remaining_attempts
+                })
 
-        # Increment attempt count
-        student.otp_attempt_count += 1
-        student.save()
+            # Increment attempt count
+            student.otp_attempt_count += 1
 
-        # Check attempt limit
-        if student.otp_attempt_count > 3:
-            student.otp_locked = True
+            # Check attempt limit
+            if student.otp_attempt_count > 3:
+                cooldown_mins = getattr(settings, 'OTP_LOCKOUT_MINUTES', 15)
+                student.otp_locked = True
+                student.otp_locked_until = timezone.now() + timedelta(minutes=cooldown_mins)
+                student.save()
+                return redirect(reverse('portal:locked', kwargs={'tracking_id': tracking_id}))
+
             student.save()
-            return redirect(reverse('portal:locked', kwargs={'tracking_id': tracking_id}))
 
         remaining_attempts = max(3 - student.otp_attempt_count, 0)
 
@@ -349,7 +358,9 @@ class OTPVerifyView(View):
 
         # If they hit 3 attempts exactly and failed, lock them out immediately
         if student.otp_attempt_count >= 3:
+            cooldown_mins = getattr(settings, 'OTP_LOCKOUT_MINUTES', 15)
             student.otp_locked = True
+            student.otp_locked_until = timezone.now() + timedelta(minutes=cooldown_mins)
             student.save()
             return redirect(reverse('portal:locked', kwargs={'tracking_id': tracking_id}))
         return render(request, 'portal/otp.html', {
@@ -379,7 +390,7 @@ class M2PResendOTPView(View):
         if not student.aadhaar_verified:
             return JsonResponse({"success": False, "error": "Aadhaar verification is required before generating KYC OTP."}, status=400)
 
-        if student.otp_locked:
+        if student.is_locked():
             return JsonResponse({"success": False, "error": "Verification locked due to too many failed attempts.", "locked": True}, status=403)
 
         m2p = M2PClient()
@@ -465,9 +476,19 @@ class LockedView(View):
     """
     def get(self, request, tracking_id):
         student = get_object_or_404(Student, tracking_id=tracking_id)
-        if not student.otp_locked:
+        if not student.is_locked():
             return redirect(reverse('portal:landing', kwargs={'tracking_id': tracking_id}))
-        return render(request, 'portal/locked.html', {'student': student})
+        
+        cooldown_mins = getattr(settings, 'OTP_LOCKOUT_MINUTES', 15)
+        remaining_minutes = cooldown_mins
+        if student.otp_locked_until:
+            diff_secs = (student.otp_locked_until - timezone.now()).total_seconds()
+            remaining_minutes = max(1, math.ceil(diff_secs / 60.0))
+            
+        return render(request, 'portal/locked.html', {
+            'student': student,
+            'remaining_minutes': remaining_minutes
+        })
 
 
 class M2PCryptoTestView(View):
@@ -477,10 +498,13 @@ class M2PCryptoTestView(View):
     and to test live endpoint connections for all permutations.
     """
     def get(self, request):
+        from django.conf import settings
+        if not getattr(settings, 'DEBUG', False):
+            return JsonResponse({"error": "Forbidden: Diagnostic test view is disabled in production."}, status=403)
+
         import subprocess
         import json
         import requests
-        from django.conf import settings
         from m2p.crypto import M2PCryptoHelper
         from cryptography.hazmat.primitives.serialization import load_der_public_key
 

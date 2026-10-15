@@ -61,8 +61,8 @@ class AadhaarClient:
 
         start = time.monotonic()
         try:
-            import sys
-            if aadhaar_number == "123456789012" and 'test' not in sys.argv:
+            mock_enabled = getattr(settings, 'MOCK_CASHFREE_APIS', False)
+            if mock_enabled and aadhaar_number == "123456789012":
                 body = {"status": "SUCCESS", "ref_id": "REF-MOCK-E2E-12345"}
                 log.http_status = 200
                 log.response_payload = mask_aadhaar_in_payload(body)
@@ -118,8 +118,8 @@ class AadhaarClient:
 
         start = time.monotonic()
         try:
-            import sys
-            if otp == "123456" and ref_id == "REF-MOCK-E2E-12345" and 'test' not in sys.argv:
+            mock_enabled = getattr(settings, 'MOCK_CASHFREE_APIS', False)
+            if mock_enabled and otp == "123456" and ref_id == "REF-MOCK-E2E-12345":
                 body = {"status": "SUCCESS", "valid": True, "data": {"name": student.full_name}}
                 log.http_status = 200
                 log.response_payload = body
@@ -180,8 +180,8 @@ class AadhaarClient:
 
         start = time.monotonic()
         try:
-            import sys
-            if name_2 == student.full_name and 'test' not in sys.argv:
+            mock_enabled = getattr(settings, 'MOCK_CASHFREE_APIS', False)
+            if mock_enabled and name_2 == student.full_name:
                 body = {"status": "SUCCESS", "score": 1.0, "data": {"score": 1.0}}
                 log.http_status = 200
                 log.response_payload = mask_aadhaar_in_payload(body)

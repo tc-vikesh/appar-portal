@@ -173,7 +173,16 @@ CSRF_TRUSTED_ORIGINS = env.list(
     default=[]
 )
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-USE_X_FORWARDED_HOST = True
+USE_X_FORWARDED_HOST = env.bool('USE_X_FORWARDED_HOST', default=False)
+SESSION_COOKIE_HTTPONLY = True
+SECURE_CONTENT_TYPE_NOSNIFF = True
+
+# Cooldown settings for OTP lockout (minutes)
+OTP_LOCKOUT_MINUTES = env.int('OTP_LOCKOUT_MINUTES', default=15)
+
+# Development Mock API Switches (Disabled by default)
+MOCK_CASHFREE_APIS = env.bool('MOCK_CASHFREE_APIS', default=False)
+MOCK_M2P_APIS = env.bool('MOCK_M2P_APIS', default=False)
 
 # M2P Encryption Security Settings
 M2P_ENCRYPTION_ENABLED = env.bool('M2P_ENCRYPTION_ENABLED', default=False)

@@ -196,8 +196,8 @@ class M2PClient:
 
         start = time.monotonic()
         try:
-            import sys
-            if student.aadhaar_number in ("123456789012", "9012") and 'test' not in sys.argv:
+            mock_enabled = getattr(settings, 'MOCK_M2P_APIS', False)
+            if mock_enabled and student.aadhaar_number in ("123456789012", "9012"):
                 body = {"success": True, "result": {"success": True}}
                 log.http_status = 200
                 log.response_payload = body
@@ -353,8 +353,8 @@ class M2PClient:
 
         start = time.monotonic()
         try:
-            import sys
-            if (aadhaar_number in ("123456789012", "9012") or getattr(student, 'aadhaar_number', None) in ("123456789012", "9012")) and 'test' not in sys.argv:
+            mock_enabled = getattr(settings, 'MOCK_M2P_APIS', False)
+            if mock_enabled and (aadhaar_number in ("123456789012", "9012") or getattr(student, 'aadhaar_number', None) in ("123456789012", "9012")):
                 body = {
                     "success": True,
                     "result": {

@@ -67,6 +67,7 @@ class StudentSerializer(serializers.ModelSerializer):
             'aadhaar_number',
             'otp_attempt_count',
             'otp_locked',
+            'otp_locked_until',
             'application_status',
             'kyc_status',
             'm2p_entity_id',

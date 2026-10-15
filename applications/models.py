@@ -50,6 +50,7 @@ class Student(models.Model):
     aadhaar_ref_id = models.CharField(max_length=100, null=True, blank=True)
     otp_attempt_count = models.SmallIntegerField(default=0)
     otp_locked = models.BooleanField(default=False)
+    otp_locked_until = models.DateTimeField(null=True, blank=True)
     application_status = models.CharField(
         max_length=30,
         choices=APPLICATION_STATUS_CHOICES,
@@ -74,6 +75,54 @@ class Student(models.Model):
     twa_synced = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    def is_locked(self):
+        """
+        Checks if the student's OTP verification is currently locked under time-based cooldown.
+        Automatically clears lock if the cooldown duration has passed.
+        """
+        if not self.otp_locked:
+            return False
+
+        from django.utils import timezone
+        import datetime
+        from django.conf import settings
+
+        now = timezone.now()
+        cooldown_mins = getattr(settings, 'OTP_LOCKOUT_MINUTES', 15)
+
+        # Check otp_locked_until if explicitly set
+        if self.otp_locked_until:
+            if now >= self.otp_locked_until:
+                self.otp_locked = False
+                self.otp_locked_until = None
+                self.otp_attempt_count = 0
+                self.aadhaar_number = None
+                self.aadhaar_ref_id = None
+                self.aadhaar_verified = False
+                self.save(update_fields=[
+                    'otp_locked', 'otp_locked_until', 'otp_attempt_count',
+                    'aadhaar_number', 'aadhaar_ref_id', 'aadhaar_verified',
+                    'updated_at'
+                ])
+                return False
+            return True
+
+        # Fallback for records locked without otp_locked_until
+        if self.updated_at and now >= (self.updated_at + datetime.timedelta(minutes=cooldown_mins)):
+            self.otp_locked = False
+            self.otp_attempt_count = 0
+            self.aadhaar_number = None
+            self.aadhaar_ref_id = None
+            self.aadhaar_verified = False
+            self.save(update_fields=[
+                'otp_locked', 'otp_attempt_count',
+                'aadhaar_number', 'aadhaar_ref_id', 'aadhaar_verified',
+                'updated_at'
+            ])
+            return False
+
+        return True
 
     @property
     def get_photo_url(self):

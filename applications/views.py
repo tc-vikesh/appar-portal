@@ -175,6 +175,7 @@ def download_student_photo(photo_url, apaar_id):
     Downloads the student photo from the provided URL and uploads it to AWS S3.
     Returns the S3 object key (e.g., 'photos/<apaar_id>.jpg').
     If download or upload fails, returns the original photo_url.
+    Protected against SSRF and DoS via size limit and extension allowlist.
     """
     if not photo_url or not (str(photo_url).startswith('http://') or str(photo_url).startswith('https://')):
         return photo_url
@@ -184,25 +185,60 @@ def download_student_photo(photo_url, apaar_id):
     import boto3
     import io
     import os
+    import re
+    import urllib.parse
+    import socket
+    import ipaddress
     
-    # Extract file extension, default to .jpg
+    # 1. URL validation & SSRF check
+    try:
+        parsed = urllib.parse.urlparse(str(photo_url))
+        if parsed.scheme not in ('http', 'https') or not parsed.hostname:
+            return photo_url
+        
+        # Resolve hostname and block private, loopback, link-local, and reserved IPs
+        addr_info = socket.getaddrinfo(parsed.hostname, None)
+        for item in addr_info:
+            ip_str = item[4][0]
+            ip = ipaddress.ip_address(ip_str)
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+                return photo_url
+    except Exception:
+        return photo_url
+
+    # 2. Extract and allowlist file extension
     ext = '.jpg'
     try:
-        parsed_path = photo_url.split('?')[0]
+        parsed_path = parsed.path
         if '.' in parsed_path.split('/')[-1]:
-            ext = '.' + parsed_path.split('/')[-1].split('.')[-1]
-            if len(ext) > 5:
-                ext = '.jpg'
+            candidate_ext = '.' + parsed_path.split('/')[-1].split('.')[-1].lower()
+            if candidate_ext in ('.jpg', '.jpeg', '.png', '.webp'):
+                ext = candidate_ext
     except Exception:
         pass
         
+    safe_id = re.sub(r'[^a-zA-Z0-9_-]', '', str(apaar_id))
     env_type = getattr(settings, 'ENV_TYPE', 'UAT')
-    s3_key = f"{env_type}/photos/{apaar_id}{ext}"
-    local_filename = f"{apaar_id}{ext}"
+    s3_key = f"{env_type}/photos/{safe_id}{ext}"
+    local_filename = f"{safe_id}{ext}"
     
     try:
-        response = requests.get(photo_url, timeout=10)
+        # Stream download with 5MB limit to prevent DoS
+        MAX_PHOTO_BYTES = 5 * 1024 * 1024
+        response = requests.get(photo_url, timeout=10, stream=True)
         if response.status_code == 200:
+            content_type = response.headers.get('Content-Type', '').lower()
+            if content_type and not (content_type.startswith('image/') or content_type == 'application/octet-stream'):
+                return photo_url
+
+            photo_bytes = bytearray()
+            for chunk in response.iter_content(chunk_size=8192):
+                photo_bytes.extend(chunk)
+                if len(photo_bytes) > MAX_PHOTO_BYTES:
+                    return photo_url
+
+            photo_data = bytes(photo_bytes)
+
             if settings.AWS_ACCESS_KEY_ID and settings.AWS_STORAGE_BUCKET_NAME:
                 s3_client = boto3.client(
                     's3',
@@ -211,15 +247,17 @@ def download_student_photo(photo_url, apaar_id):
                     region_name=settings.AWS_S3_REGION_NAME
                 )
                 
-                content_type = 'image/jpeg'
-                if ext.lower() == '.png':
-                    content_type = 'image/png'
+                upload_content_type = 'image/jpeg'
+                if ext == '.png':
+                    upload_content_type = 'image/png'
+                elif ext == '.webp':
+                    upload_content_type = 'image/webp'
                 
                 s3_client.upload_fileobj(
-                    io.BytesIO(response.content),
+                    io.BytesIO(photo_data),
                     settings.AWS_STORAGE_BUCKET_NAME,
                     s3_key,
-                    ExtraArgs={'ContentType': content_type}
+                    ExtraArgs={'ContentType': upload_content_type}
                 )
                 return s3_key
             else:
@@ -228,7 +266,7 @@ def download_student_photo(photo_url, apaar_id):
                 os.makedirs(media_photos_dir, exist_ok=True)
                 filepath = os.path.join(media_photos_dir, local_filename)
                 with open(filepath, 'wb') as f:
-                    f.write(response.content)
+                    f.write(photo_data)
                 return f"/media/photos/{local_filename}"
     except Exception as e:
         print(f"Error handling photo: {e}")
@@ -393,11 +431,28 @@ class ReceiveApplicationView(LoggingAPIView):
                 }, status=status.HTTP_400_BAD_REQUEST)
 
             # Save student record and automatically transition to PROCESSING with kyc_status PENDING
-            student = serializer.save(
-                tracking_id=tracking_id,
-                application_status='PROCESSING',
-                kyc_status='PENDING'
-            )
+            from django.db import IntegrityError
+            try:
+                student = serializer.save(
+                    tracking_id=tracking_id,
+                    application_status='PROCESSING',
+                    kyc_status='PENDING'
+                )
+            except IntegrityError:
+                # Concurrent request created it first, fetch and return idempotent 200
+                student = Student.objects.get(apaar_id=apaar_id)
+                redirect_url = get_portal_redirect_url(request, student.tracking_id)
+                return Response({
+                    "status": "success",
+                    "status_code": "200",
+                    "message": "Application already received. Idempotency matched.",
+                    "data": {
+                        "tracking_id": student.tracking_id,
+                        "processing_status": student.application_status,
+                        "redirect_url": redirect_url,
+                        "received_at": student.created_at.strftime("%Y-%m-%dT%H:%M:%SZ") if student.created_at else ""
+                    }
+                }, status=status.HTTP_200_OK)
 
             redirect_url = get_portal_redirect_url(request, student.tracking_id)
 

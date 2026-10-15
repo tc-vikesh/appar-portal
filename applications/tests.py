@@ -461,5 +461,107 @@ class TAPTestCase(TestCase):
         self.assertEqual(data.get("status"), "healthy")
         self.assertEqual(data.get("database"), "connected")
 
+    def test_receive_application_concurrency_integrity_error(self):
+        """Test that concurrent submissions triggering IntegrityError return the idempotent 200 response."""
+        from django.db import IntegrityError
+        from unittest.mock import patch
+
+        # Create student first
+        Student.objects.create(
+            tracking_id="TAP-CONCUR-001",
+            apaar_id="APAAR-CONCUR-001",
+            full_name="Concurrency Tester",
+            mobile="9876543210",
+            email="concur@example.com",
+            application_status="PROCESSING",
+            kyc_status="PENDING"
+        )
+
+        headers = self._generate_hmac_headers()
+        payload = dict(self.student_data)
+        payload["apaar_id"] = "APAAR-CONCUR-001"
+        payload["APPLICATION_REFERENCE_NUMBER"] = "TAP-CONCUR-001"
+
+        # Mock StudentSerializer.save to simulate race condition where student was created concurrently
+        with patch('applications.serializers.StudentSerializer.save', side_effect=IntegrityError("Duplicate entry")):
+            response = self.client.post(
+                reverse('issuer_bank:receive_application'),
+                data=self._encrypt(payload),
+                content_type='application/json',
+                **headers
+            )
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            data = self._decrypt(response.json())
+            self.assertEqual(data.get("status"), "success")
+            self.assertIn("Idempotency matched", data.get("message"))
+            self.assertEqual(data.get("data", {}).get("tracking_id"), "TAP-CONCUR-001")
+
+    def test_download_student_photo_ssrf_protection(self):
+        """Test that download_student_photo rejects SSRF attempts to loopback, metadata, and private IPs."""
+        from applications.views import download_student_photo
+
+        # Loopback URL
+        self.assertEqual(download_student_photo("http://127.0.0.1/evil.jpg", "TEST_SSRF_1"), "http://127.0.0.1/evil.jpg")
+        self.assertEqual(download_student_photo("http://localhost/evil.jpg", "TEST_SSRF_2"), "http://localhost/evil.jpg")
+
+        # AWS/Cloud metadata service
+        self.assertEqual(download_student_photo("http://169.254.169.254/latest/meta-data", "TEST_SSRF_3"), "http://169.254.169.254/latest/meta-data")
+
+        # Private RFC1918 range
+        self.assertEqual(download_student_photo("http://192.168.1.1/internal.png", "TEST_SSRF_4"), "http://192.168.1.1/internal.png")
+        self.assertEqual(download_student_photo("http://10.0.0.5/internal.png", "TEST_SSRF_5"), "http://10.0.0.5/internal.png")
+
+    def test_download_student_photo_dos_protection(self):
+        """Test that download_student_photo aborts downloads exceeding 5MB."""
+        from applications.views import download_student_photo
+        from unittest.mock import patch, MagicMock
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.headers = {'Content-Type': 'image/jpeg'}
+        # Return chunks totaling > 5MB
+        mock_resp.iter_content.return_value = [b"A" * 1024 * 1024] * 6
+
+        with patch('requests.get', return_value=mock_resp), \
+             patch('socket.getaddrinfo', return_value=[(None, None, None, None, ('93.184.216.34', 80))]):
+            result = download_student_photo("https://public-cdn.example.com/huge.jpg", "TEST_DOS")
+            # Should abort and return original URL
+            self.assertEqual(result, "https://public-cdn.example.com/huge.jpg")
+
+    def test_student_is_locked_cooldown_behavior(self):
+        """Test Student.is_locked() cooldown and auto-unlock behavior."""
+        from django.utils import timezone
+        from datetime import timedelta
+
+        student = Student.objects.create(
+            tracking_id="TAP-LOCK-TEST",
+            apaar_id="APAAR-LOCK-TEST",
+            full_name="Lock Tester",
+            mobile="9876543210",
+            email="lock@example.com"
+        )
+
+        # Not locked
+        self.assertFalse(student.is_locked())
+
+        # Locked with active future cooldown
+        student.otp_locked = True
+        student.otp_locked_until = timezone.now() + timedelta(minutes=15)
+        student.otp_attempt_count = 3
+        student.save()
+        self.assertTrue(student.is_locked())
+
+        # Cooldown expired in past
+        student.otp_locked_until = timezone.now() - timedelta(minutes=1)
+        student.save()
+        self.assertFalse(student.is_locked())
+
+        # Auto-cleared in database
+        student.refresh_from_db()
+        self.assertFalse(student.otp_locked)
+        self.assertIsNone(student.otp_locked_until)
+        self.assertEqual(student.otp_attempt_count, 0)
+
+
 
 

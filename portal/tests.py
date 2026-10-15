@@ -50,8 +50,11 @@ class PortalTestCase(TestCase):
         self.assertContains(response, 'href="https://transcorpint.com/wp-content/uploads/2026/06/transcorp-ppi-mitc.pdf"')
 
     def test_portal_landing_unblocks_locked_student(self):
-        """Test GET /portal/<tracking_id>/ unblocks a locked student and restarts journey with empty Aadhaar input."""
+        """Test GET /portal/<tracking_id>/ redirects to locked during cooldown and unblocks once cooldown expires."""
+        from django.utils import timezone
+        from datetime import timedelta
         self.student.otp_locked = True
+        self.student.otp_locked_until = timezone.now() + timedelta(minutes=15)
         self.student.otp_attempt_count = 3
         self.student.aadhaar_number = "123456789012"
         self.student.aadhaar_ref_id = "REF-OLD-123"
@@ -59,15 +62,27 @@ class PortalTestCase(TestCase):
         self.student.kyc_status = "PENDING"
         self.student.save()
 
-        # Direct hit on locked view renders 200 with restart link
+        # Direct hit on locked view renders 200 with restart link and cooldown remaining
         response_locked = self.client.get(
             reverse('portal:locked', kwargs={'tracking_id': self.student.tracking_id})
         )
         self.assertEqual(response_locked.status_code, 200)
         self.assertTemplateUsed(response_locked, 'portal/locked.html')
         self.assertContains(response_locked, reverse('portal:landing', kwargs={'tracking_id': self.student.tracking_id}))
+        self.assertContains(response_locked, "cooldown period of")
 
-        # Hitting the main portal landing URL unblocks the user
+        # While cooldown is active, landing page redirects to locked view
+        response_active = self.client.get(
+            reverse('portal:landing', kwargs={'tracking_id': self.student.tracking_id})
+        )
+        self.assertEqual(response_active.status_code, 302)
+        self.assertRedirects(response_active, reverse('portal:locked', kwargs={'tracking_id': self.student.tracking_id}))
+
+        # Now simulate expiration of cooldown
+        self.student.otp_locked_until = timezone.now() - timedelta(minutes=1)
+        self.student.save()
+
+        # Hitting the main portal landing URL now unblocks the user
         response = self.client.get(
             reverse('portal:landing', kwargs={'tracking_id': self.student.tracking_id})
         )
@@ -77,6 +92,7 @@ class PortalTestCase(TestCase):
         # Verify student was unblocked and fields reset
         self.student.refresh_from_db()
         self.assertFalse(self.student.otp_locked)
+        self.assertIsNone(self.student.otp_locked_until)
         self.assertEqual(self.student.otp_attempt_count, 0)
         self.assertIsNone(self.student.aadhaar_number)
         self.assertIsNone(self.student.aadhaar_ref_id)
