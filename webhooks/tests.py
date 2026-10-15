@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import json
 import time
 from unittest.mock import patch, MagicMock
