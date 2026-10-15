@@ -62,6 +62,28 @@ class ABCWebhookDispatcher:
         """
         return self.dispatch_status_update(student, remarks=remarks)
 
+    @staticmethod
+    def generate_webhook_hmac_headers(client_id, client_secret, timestamp=None):
+        """
+        Generates HMAC authentication headers specifically for ABC outbound webhooks.
+        Per ABC PHP reference:
+            $bodyMessage = $bankClientId . "\n" . $bodyTs;
+            $bodyHmac = hash_hmac('sha256', $bodyMessage, $bankClientSecret);
+        """
+        import time as pytime
+        import hmac
+        import hashlib
+        ts = str(int(pytime.time())) if timestamp is None else str(timestamp)
+        msg_bytes = f"{client_id}\n{ts}".encode('utf-8')
+        sec_bytes = client_secret.encode('utf-8')
+        signature = hmac.new(sec_bytes, msg_bytes, hashlib.sha256).hexdigest()
+        return {
+            'X-Client-ID': client_id,
+            'X-Client-Timestamp': ts,
+            'X-Client-HMAC': signature,
+            'Content-Type': 'application/json'
+        }
+
     def _send_webhook(self, url, payload, webhook_type, student):
         """
         Executes HTTP POST to the target webhook URL and logs attempt in WebhookLog.
@@ -104,21 +126,8 @@ class ABCWebhookDispatcher:
 
         start = time.monotonic()
         try:
-            # Prepare HMAC Headers
-            import time as pytime
-            import hmac
-            import hashlib
-            timestamp = str(int(pytime.time()))
-            msg_bytes = f"{client_id}:{timestamp}".encode('utf-8')
-            sec_bytes = client_secret.encode('utf-8')
-            signature = hmac.new(sec_bytes, msg_bytes, hashlib.sha256).hexdigest()
-
-            headers = {
-                'X-Client-ID': client_id,
-                'X-Client-Timestamp': timestamp,
-                'X-Client-HMAC': signature,
-                'Content-Type': 'application/json'
-            }
+            # Prepare HMAC Headers specifically for ABC outbound webhook
+            headers = self.generate_webhook_hmac_headers(client_id, client_secret)
             log.headers = make_json_safe(headers)
 
             # Encrypt Payload using AES-256-GCM

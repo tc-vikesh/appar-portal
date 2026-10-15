@@ -83,8 +83,15 @@ class WebhookDispatcherTestCase(TestCase):
         headers = kwargs.get("headers", {})
         self.assertIn("X-Client-ID", headers)
         self.assertIn("X-Client-Timestamp", headers)
-        self.assertIn("X-Client-HMAC", headers)
         self.assertEqual(headers["X-Client-ID"], settings.ABC_CLIENT_ID)
+        
+        # Verify HMAC signature calculation: HMAC-SHA256(clientId\ntimestamp, key=ABC_CLIENT_SECRET)
+        expected_sig = hmac.new(
+            settings.ABC_CLIENT_SECRET.encode('utf-8'),
+            f"{headers['X-Client-ID']}\n{headers['X-Client-Timestamp']}".encode('utf-8'),
+            hashlib.sha256
+        ).hexdigest()
+        self.assertEqual(headers["X-Client-HMAC"], expected_sig)
         
         from applications.crypto import decrypt_abc_payload
         payload = decrypt_abc_payload(kwargs.get("json", {}).get("encryptedData"))
