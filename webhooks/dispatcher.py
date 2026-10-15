@@ -146,11 +146,14 @@ class ABCWebhookDispatcher:
                 body = {"_raw_body": response.text[:1000]}
 
             success = 200 <= response.status_code < 300
-            if success and isinstance(body, dict) and body.get("status") == "error":
-                success = False
+            if success and isinstance(body, dict):
+                if body.get("status") in ("error", "failed", "failure") or body.get("success") is False:
+                    success = False
 
             log.success = success
-            if not success:
+            if success:
+                log.delivered_at = timezone.now()
+            else:
                 log.error_message = f"HTTP status: {response.status_code}. Response: {body}"
 
             return {"success": success, "response": body}

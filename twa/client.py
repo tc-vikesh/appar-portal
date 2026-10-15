@@ -157,6 +157,10 @@ class TWAClient:
                 )
             except Exception as e:
                 print(f"Error generating presigned URL: {e}")
+        elif photo_url and photo_url.startswith('/media/'):
+            portal_base = getattr(settings, 'PORTAL_BASE_URL', '').rstrip('/')
+            if portal_base:
+                photo_url = f"{portal_base}{photo_url}"
 
         payload = {
             "firstName": first_name,

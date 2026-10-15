@@ -562,6 +562,63 @@ class TAPTestCase(TestCase):
         self.assertIsNone(student.otp_locked_until)
         self.assertEqual(student.otp_attempt_count, 0)
 
+    def test_mobile_normalization(self):
+        """Test normalize_mobile strips +91, 91-, leading zero, spaces, and hyphens."""
+        from applications.serializers import normalize_mobile
+        self.assertEqual(normalize_mobile("+919876543210"), "9876543210")
+        self.assertEqual(normalize_mobile("91-9876543210"), "9876543210")
+        self.assertEqual(normalize_mobile("09876543210"), "9876543210")
+        self.assertEqual(normalize_mobile("98765 43210"), "9876543210")
+        self.assertEqual(normalize_mobile("9876543210"), "9876543210")
+
+    def test_receive_application_same_as_current_address(self):
+        """Test that permanent address inherits from current address when SAME_AS_CURRENT is True."""
+        headers = self._generate_hmac_headers()
+        payload = {
+            "APAAR_ID": "APAAR-SAME-ADDR-01",
+            "APPLICATION_REFERENCE_NUMBER": "TAP-SAME-01",
+            "PERSONAL_INFO": {
+                "FULL_NAME": "Address Inherit Tester",
+                "DOB": "15/08/2001",
+                "GENDER": "Female",
+                "MOBILE": "+91-9876543210",
+                "EMAIL": "sameaddr@example.com"
+            },
+            "ACADEMIC_INFO": {
+                "UNIVERSITY_NAME": "Delhi University"
+            },
+            "ADDITIONAL_INFO": {
+                "CURRENT_ADDRESS": {
+                    "ADDRESS_LINE": "Flat 101, Galaxy Heights",
+                    "CITY": "Bengaluru",
+                    "STATE": "Karnataka",
+                    "PIN_CODE": "560001"
+                },
+                "PERMANENT_ADDRESS": {
+                    "SAME_AS_CURRENT": True
+                }
+            }
+        }
+
+        response = self.client.post(
+            reverse('issuer_bank:receive_application'),
+            data=self._encrypt(payload),
+            content_type='application/json',
+            **headers
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = self._decrypt(response.json())
+        self.assertEqual(data.get("status"), "success")
+
+        # Verify student record in database has inherited permanent address
+        student = Student.objects.get(apaar_id="APAAR-SAME-ADDR-01")
+        self.assertEqual(student.mobile, "9876543210")
+        self.assertEqual(student.gender, "F")
+        self.assertEqual(student.title, "Ms")
+        self.assertEqual(student.permanent_address.get("address1"), "Flat 101, Galaxy Heights")
+        self.assertEqual(student.permanent_address.get("pincode"), "560001")
+        self.assertEqual(student.permanent_address.get("city"), "Bengaluru")
+
 
 
 

@@ -612,3 +612,127 @@ class PortalTestCase(TestCase):
         self.assertEqual(res_aadhaar_verify.status_code, 400)
         self.assertIn(reverse('portal:success', kwargs={'tracking_id': self.student.tracking_id}), res_aadhaar_verify.json().get('redirect_url', ''))
 
+    @patch('applications.aadhaar_client.AadhaarClient.aadhaar_send_otp')
+    def test_rate_limiting_aadhaar_send_otp(self, mock_send_otp):
+        """Test that calling Aadhaar Send OTP within 30 seconds triggers HTTP 429 rate limit."""
+        mock_send_otp.return_value = {"status": "SUCCESS", "ref_id": "REF-RL-1"}
+
+        payload = {
+            "aadhaar_number": "123456789012",
+            "consent_aadhaar_ovd": True,
+            "consent_ckycr": True,
+            "consent_address_mismatch": True,
+            "consent_kyc_ppi": True,
+            "consent_terms_conditions": True
+        }
+
+        # First request succeeds
+        res1 = self.client.post(
+            reverse('portal:aadhaar_send_otp', kwargs={'tracking_id': self.student.tracking_id}),
+            data=json.dumps(payload),
+            content_type='application/json'
+        )
+        self.assertEqual(res1.status_code, 200)
+
+        # Immediate second request fails with 429
+        res2 = self.client.post(
+            reverse('portal:aadhaar_send_otp', kwargs={'tracking_id': self.student.tracking_id}),
+            data=json.dumps(payload),
+            content_type='application/json'
+        )
+        self.assertEqual(res2.status_code, 429)
+        self.assertIn("Please wait", res2.json()["error"])
+
+    @patch('m2p.client.M2PClient.generate_otp')
+    def test_rate_limiting_m2p_resend_otp(self, mock_generate_otp):
+        """Test that calling M2P Resend OTP within 30 seconds triggers HTTP 429 rate limit."""
+        self.student.aadhaar_verified = True
+        self.student.save()
+
+        mock_generate_otp.return_value = {"success": True, "result": {"success": True}}
+
+        # First request succeeds
+        res1 = self.client.post(
+            reverse('portal:m2p_resend_otp', kwargs={'tracking_id': self.student.tracking_id}),
+            content_type='application/json'
+        )
+        self.assertEqual(res1.status_code, 200)
+
+        # Immediate second request fails with 429
+        res2 = self.client.post(
+            reverse('portal:m2p_resend_otp', kwargs={'tracking_id': self.student.tracking_id}),
+            content_type='application/json'
+        )
+        self.assertEqual(res2.status_code, 429)
+        self.assertIn("Please wait", res2.json()["error"])
+
+    def test_cms_custom_content_persistence(self):
+        """Test that admin customizations to CMSPage content are NOT overwritten by SuccessView."""
+        self.student.kyc_status = 'MIN_KYC'
+        self.student.save()
+
+        custom_text = "<p>Welcome to our custom VIP onboarding for {mobile}!</p>"
+        CMSPage.objects.update_or_create(
+            slug='success-page',
+            defaults={
+                'title': 'Custom Success Title',
+                'content': custom_text
+            }
+        )
+
+        response = self.client.get(
+            reverse('portal:success', kwargs={'tracking_id': self.student.tracking_id})
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Custom Success Title")
+        self.assertContains(response, "custom VIP onboarding")
+
+        # Verify DB content was NOT overwritten back to default_content
+        page = CMSPage.objects.get(slug='success-page')
+        self.assertEqual(page.content, custom_text)
+
+    @patch('applications.aadhaar_client.AadhaarClient.aadhaar_verify_otp')
+    def test_attempt_rollback_on_server_error(self, mock_verify):
+        """Test that attempt count is rolled back if upstream service crashes with 500."""
+        self.student.aadhaar_number = "123456789012"
+        self.student.aadhaar_ref_id = "REF-ERR-1"
+        self.student.otp_attempt_count = 1
+        self.student.save()
+
+        mock_verify.side_effect = Exception("Cashfree network timeout")
+
+        response = self.client.post(
+            reverse('portal:aadhaar_verify_otp', kwargs={'tracking_id': self.student.tracking_id}),
+            data=json.dumps({"otp": "123456", "ref_id": "REF-ERR-1"}),
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 500)
+
+        self.student.refresh_from_db()
+        # Attempt count should remain 1 instead of being incremented to 2
+        self.assertEqual(self.student.otp_attempt_count, 1)
+
+    @patch('applications.aadhaar_client.AadhaarClient.aadhaar_verify_otp')
+    @patch('applications.aadhaar_client.AadhaarClient.name_match')
+    def test_name_mismatch_locks_on_third_attempt(self, mock_name_match, mock_verify):
+        """Test that name mismatch locks out student if it occurs on attempt 3."""
+        self.student.aadhaar_number = "123456789012"
+        self.student.aadhaar_ref_id = "REF-MM-1"
+        self.student.otp_attempt_count = 2 # Will become 3
+        self.student.save()
+
+        mock_verify.return_value = {"status": "SUCCESS", "data": {"name": "Completely Different"}}
+        mock_name_match.return_value = {"status": "SUCCESS", "data": {"score": 0.20}}
+
+        response = self.client.post(
+            reverse('portal:aadhaar_verify_otp', kwargs={'tracking_id': self.student.tracking_id}),
+            data=json.dumps({"otp": "123456", "ref_id": "REF-MM-1"}),
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(response.json()["locked"])
+
+        self.student.refresh_from_db()
+        self.assertTrue(self.student.otp_locked)
+        self.assertIsNotNone(self.student.otp_locked_until)
+

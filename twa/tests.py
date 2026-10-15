@@ -216,29 +216,25 @@ class TWATestCase(TestCase):
         self.assertEqual(log.http_status, 200)
 
     # 3. Inbound Webhooks: Validation Rules
-    def test_inbound_application_status_webhook_invalid_status(self):
-        """Test webhook rejection on invalid application status."""
+    def test_inbound_application_status_webhook_flexible_status(self):
+        """Test webhook accepts flexible status strings (e.g. CUSTOM_STATUS)."""
         url = reverse('twa:application_status_webhook')
         payload = {
             "tracking_id": self.student.tracking_id,
-            "processing_status": "INVALID_STATE",
-            "remarks": "Test invalid status"
+            "processing_status": "CUSTOM_STATUS",
+            "remarks": "Test custom status"
         }
 
         response = self.client.post(
             url,
             data=json.dumps(payload),
             content_type='application/json',
-            REMOTE_ADDR='127.0.0.1'
+            REMOTE_ADDR='10.0.0.5'
         )
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        
-        # Verify log entry exists and is unsuccessful
-        log = WebhookLog.objects.first()
-        self.assertIsNotNone(log)
-        self.assertFalse(log.success)
-        self.assertEqual(log.http_status, 400)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.student.refresh_from_db()
+        self.assertEqual(self.student.application_status, "CUSTOM_STATUS")
 
     def test_inbound_application_status_webhook_missing_fields(self):
         """Test webhook rejection on missing mandatory fields."""
@@ -289,27 +285,25 @@ class TWATestCase(TestCase):
         self.assertTrue(log.success)
         self.assertEqual(log.http_status, 200)
 
-    def test_inbound_kyc_status_webhook_invalid_status(self):
-        """Test KYC status webhook blocks invalid kyc_status value."""
+    def test_inbound_kyc_status_webhook_verified_status(self):
+        """Test KYC status webhook accepts 'VERIFIED' status."""
         url = reverse('twa:kyc_status_webhook')
         payload = {
             "tracking_id": self.student.tracking_id,
-            "kyc_status": "NOT_A_REAL_KYC_STATUS",
-            "remarks": "Invalid"
+            "kyc_status": "VERIFIED",
+            "remarks": "Verified by partner"
         }
 
         response = self.client.post(
             url,
             data=json.dumps(payload),
             content_type='application/json',
-            REMOTE_ADDR='127.0.0.1'
+            REMOTE_ADDR='10.0.0.5'
         )
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-
-        log = WebhookLog.objects.first()
-        self.assertIsNotNone(log)
-        self.assertFalse(log.success)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.student.refresh_from_db()
+        self.assertEqual(self.student.kyc_status, "VERIFIED")
 
     def test_inbound_application_status_webhook_encrypted(self):
         """Test inbound application status webhook with AES-256-GCM encrypted payload."""

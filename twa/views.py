@@ -153,9 +153,9 @@ class ApplicationStatusWebhookView(WebhookLoggingAPIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-        tracking_id = data.get('tracking_id') if isinstance(data, dict) else None
-        processing_status = data.get('processing_status') if isinstance(data, dict) else None
-        remarks = data.get('remarks') if isinstance(data, dict) else None
+        tracking_id = (data.get('tracking_id') or data.get('TRACKING_ID')) if isinstance(data, dict) else None
+        processing_status = (data.get('processing_status') or data.get('PROCESSING_STATUS')) if isinstance(data, dict) else None
+        remarks = (data.get('remarks') or data.get('REMARKS')) if isinstance(data, dict) else None
 
         if not tracking_id or not processing_status:
             return Response(
@@ -165,16 +165,8 @@ class ApplicationStatusWebhookView(WebhookLoggingAPIView):
 
         student = get_object_or_404(Student, tracking_id=tracking_id)
 
-        # Transition status
-        # Application statuses: RECEIVED -> PROCESSING -> ISSUED | REJECTED | FAILED
-        valid_statuses = dict(Student.APPLICATION_STATUS_CHOICES)
-        if processing_status not in valid_statuses:
-            return Response(
-                {"error": f"Invalid processing_status '{processing_status}'."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        student.application_status = processing_status
+        # Transition status - accept any status string up to 50 chars (User requirement 11)
+        student.application_status = str(processing_status).strip()[:50]
         student.save()
 
         # Webhook callback forwarding to ABC
@@ -206,9 +198,9 @@ class KYCStatusWebhookView(WebhookLoggingAPIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-        tracking_id = data.get('tracking_id') if isinstance(data, dict) else None
-        kyc_status_val = data.get('kyc_status') if isinstance(data, dict) else None
-        remarks = data.get('remarks') if isinstance(data, dict) else None
+        tracking_id = (data.get('tracking_id') or data.get('TRACKING_ID')) if isinstance(data, dict) else None
+        kyc_status_val = (data.get('kyc_status') or data.get('KYC_STATUS')) if isinstance(data, dict) else None
+        remarks = (data.get('remarks') or data.get('REMARKS')) if isinstance(data, dict) else None
 
         if not tracking_id or not kyc_status_val:
             return Response(
@@ -218,16 +210,8 @@ class KYCStatusWebhookView(WebhookLoggingAPIView):
 
         student = get_object_or_404(Student, tracking_id=tracking_id)
 
-        # Transition status
-        # KYC statuses: MIN_KYC -> FULL_KYC | FAILED | REJECTED
-        valid_statuses = dict(Student.KYC_STATUS_CHOICES)
-        if kyc_status_val not in valid_statuses:
-            return Response(
-                {"error": f"Invalid kyc_status '{kyc_status_val}'."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        student.kyc_status = kyc_status_val
+        # Transition status - accept any status string up to 50 chars (User requirement 11)
+        student.kyc_status = str(kyc_status_val).strip()[:50]
         student.save()
 
         # Webhook callback forwarding to ABC

@@ -41,6 +41,18 @@ def normalize_gender(gender_val):
     return gender_val
 
 
+def normalize_mobile(mobile_val):
+    if not mobile_val:
+        return mobile_val
+    m = str(mobile_val).strip()
+    digits = re.sub(r'\D', '', m)
+    if len(digits) == 12 and digits.startswith('91'):
+        digits = digits[2:]
+    elif len(digits) == 11 and digits.startswith('0'):
+        digits = digits[1:]
+    return digits
+
+
 class StudentSerializer(serializers.ModelSerializer):
     def to_internal_value(self, data):
         if isinstance(data, dict):
@@ -57,6 +69,15 @@ class StudentSerializer(serializers.ModelSerializer):
                         data['title'] = 'Ms'
                     else:
                         data['title'] = 'Mx'
+            if 'mobile' in data and data['mobile']:
+                data['mobile'] = normalize_mobile(data['mobile'])
+            if isinstance(data.get('permanent_address'), dict) and isinstance(data.get('current_address'), dict):
+                perm = data['permanent_address']
+                curr = data['current_address']
+                if perm.get('SAME_AS_CURRENT') is True or perm.get('same_as_current') is True:
+                    for k, v in curr.items():
+                        if k not in perm or perm[k] is None or perm[k] == '':
+                            perm[k] = v
         return super().to_internal_value(data)
 
     class Meta:
@@ -96,6 +117,19 @@ class StudentSerializer(serializers.ModelSerializer):
     def validate_permanent_address(self, value):
         if value is None:
             return value
+        if isinstance(value, dict) and (value.get('SAME_AS_CURRENT') is True or value.get('same_as_current') is True):
+            pincode = None
+            for key in value.keys():
+                if key.lower() in ('pincode', 'pin_code', 'pin', 'postal_code', 'postalcode'):
+                    pincode = str(value[key]).strip()
+                    break
+            if not pincode and hasattr(self, 'initial_data') and isinstance(self.initial_data, dict):
+                curr = self.initial_data.get('current_address')
+                if isinstance(curr, dict):
+                    for key in curr.keys():
+                        if key.lower() in ('pincode', 'pin_code', 'pin', 'postal_code', 'postalcode'):
+                            value['pincode'] = str(curr[key]).strip()
+                            break
         self._validate_pincode_in_address(value, 'permanent_address')
         return value
 

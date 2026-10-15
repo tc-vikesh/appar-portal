@@ -40,6 +40,12 @@ class AadhaarClient:
             "X-Client-Secret": self.client_secret
         }
 
+    def _get_masked_headers(self, headers):
+        masked = dict(headers)
+        if "X-Client-Secret" in masked and masked["X-Client-Secret"]:
+            masked["X-Client-Secret"] = "******"
+        return masked
+
     def aadhaar_send_otp(self, aadhaar_number, student):
         """
         POST /offline-aadhaar/otp
@@ -56,7 +62,7 @@ class AadhaarClient:
             apaar_id=student.apaar_id,
             endpoint="aadhaar_send_otp",
             request_url=url,
-            request_headers=headers,
+            request_headers=self._get_masked_headers(headers),
         )
 
         start = time.monotonic()
@@ -113,7 +119,7 @@ class AadhaarClient:
             apaar_id=student.apaar_id,
             endpoint="aadhaar_verify_otp",
             request_url=url,
-            request_headers=headers,
+            request_headers=self._get_masked_headers(headers),
         )
 
         start = time.monotonic()
@@ -175,7 +181,7 @@ class AadhaarClient:
             apaar_id=student.apaar_id,
             endpoint="name_match",
             request_url=url,
-            request_headers=headers,
+            request_headers=self._get_masked_headers(headers),
         )
 
         start = time.monotonic()

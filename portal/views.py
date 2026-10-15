@@ -1,6 +1,7 @@
 import re
 import json
 import math
+import time
 from datetime import timedelta
 from django.shortcuts import render, redirect, get_object_or_404
 from django.views import View
@@ -60,12 +61,22 @@ class AadhaarSendOTPView(View):
         if student.is_locked():
             return JsonResponse({"success": False, "error": "Verification locked due to too many failed attempts.", "locked": True}, status=403)
 
+        # 30-second rate limit check
+        now_ts = time.time()
+        last_sent = request.session.get(f"last_aadhaar_otp_{tracking_id}")
+        if last_sent and (now_ts - last_sent) < 30:
+            wait_time = int(30 - (now_ts - last_sent))
+            return JsonResponse({
+                "success": False,
+                "error": f"Please wait {wait_time} seconds before requesting a new Aadhaar OTP."
+            }, status=429)
+
         try:
             body = json.loads(request.body)
         except (ValueError, TypeError):
             return JsonResponse({"success": False, "error": "Invalid JSON payload."}, status=400)
 
-        aadhaar_number = body.get('aadhaar_number', '').strip()
+        aadhaar_number = str(body.get('aadhaar_number') or '').strip()
         consent_aadhaar_ovd = body.get('consent_aadhaar_ovd') is True
         consent_ckycr = body.get('consent_ckycr') is True
         consent_address_mismatch = body.get('consent_address_mismatch') is True
@@ -87,6 +98,7 @@ class AadhaarSendOTPView(View):
             success = resp.get("status") == "SUCCESS"
             
             if success:
+                request.session[f"last_aadhaar_otp_{tracking_id}"] = now_ts
                 # Safely extract last 4 digits of Aadhaar
                 aadhaar_last_4 = ""
                 if aadhaar_number and len(aadhaar_number) >= 4:
@@ -138,8 +150,8 @@ class AadhaarVerifyOTPView(View):
             except (ValueError, TypeError):
                 return JsonResponse({"success": False, "error": "Invalid JSON payload."}, status=400)
 
-            otp = body.get('otp', '').strip()
-            ref_id = body.get('ref_id', '').strip()
+            otp = str(body.get('otp') or '').strip()
+            ref_id = str(body.get('ref_id') or '').strip()
 
             if not otp:
                 return JsonResponse({"success": False, "error": "OTP is required."}, status=400)
@@ -193,7 +205,9 @@ class AadhaarVerifyOTPView(View):
                 err_msg = name_resp.get("message") or "Name matching service failed."
                 return JsonResponse({"success": False, "error": err_msg})
 
-            score_block = name_resp.get("data", {}) if "data" in name_resp else name_resp
+            score_block = (name_resp.get("data") or name_resp) if isinstance(name_resp, dict) else {}
+            if not isinstance(score_block, dict):
+                score_block = {}
             score_val = score_block.get("score")
             if score_val is None:
                 score_val = 0.0
@@ -205,8 +219,16 @@ class AadhaarVerifyOTPView(View):
             # Store match score
             student.aadhaar_name_match_score = int(match_score)
             if match_score < 90.0:
+                if student.otp_attempt_count >= 3:
+                    cooldown_mins = getattr(settings, 'OTP_LOCKOUT_MINUTES', 15)
+                    student.otp_locked = True
+                    student.otp_locked_until = timezone.now() + timedelta(minutes=cooldown_mins)
                 student.save()
-                return JsonResponse({"success": False, "error": f"Aadhaar name mismatch: match score is {int(match_score)}% (minimum 90% required)."})
+                return JsonResponse({
+                    "success": False, 
+                    "error": f"Aadhaar name mismatch: match score is {int(match_score)}% (minimum 90% required).",
+                    "locked": student.otp_locked
+                }, status=403 if student.otp_locked else 200)
 
             student.aadhaar_verified = True
             student.save()
@@ -235,6 +257,13 @@ class AadhaarVerifyOTPView(View):
             except Exception as exc:
                 return JsonResponse({"success": False, "error": f"KYC server OTP generation error: {str(exc)}"}, status=500)
         except Exception as exc:
+            try:
+                with transaction.atomic():
+                    s = Student.objects.select_for_update().get(id=student.id)
+                    s.otp_attempt_count = max(0, s.otp_attempt_count - 1)
+                    s.save()
+            except Exception:
+                pass
             return JsonResponse({"success": False, "error": f"Verification server error: {str(exc)}"}, status=500)
 
 
@@ -278,7 +307,7 @@ class OTPVerifyView(View):
             if student.is_locked():
                 return redirect(reverse('portal:locked', kwargs={'tracking_id': tracking_id}))
 
-            otp = request.POST.get('otp', '').strip()
+            otp = str(request.POST.get('otp') or '').strip()
             errors = {}
 
             if not otp:
@@ -354,6 +383,13 @@ class OTPVerifyView(View):
                 errors['m2p'] = err_msg
 
         except Exception as exc:
+            try:
+                with transaction.atomic():
+                    s = Student.objects.select_for_update().get(id=student.id)
+                    s.otp_attempt_count = max(0, s.otp_attempt_count - 1)
+                    s.save()
+            except Exception:
+                pass
             errors['m2p'] = f"KYC server error: {str(exc)}"
 
         # If they hit 3 attempts exactly and failed, lock them out immediately
@@ -393,6 +429,16 @@ class M2PResendOTPView(View):
         if student.is_locked():
             return JsonResponse({"success": False, "error": "Verification locked due to too many failed attempts.", "locked": True}, status=403)
 
+        # 30-second rate limit check
+        now_ts = time.time()
+        last_sent = request.session.get(f"last_m2p_otp_{tracking_id}")
+        if last_sent and (now_ts - last_sent) < 30:
+            wait_time = int(30 - (now_ts - last_sent))
+            return JsonResponse({
+                "success": False,
+                "error": f"Please wait {wait_time} seconds before requesting a new OTP."
+            }, status=429)
+
         m2p = M2PClient()
         try:
             m2p_response = m2p.generate_otp(student)
@@ -402,6 +448,7 @@ class M2PResendOTPView(View):
             )
 
             if m2p_success:
+                request.session[f"last_m2p_otp_{tracking_id}"] = now_ts
                 masked_mobile = f"+91 ******{student.mobile[-4:]}" if student.mobile and len(student.mobile) >= 4 else f"+91 {student.mobile}"
                 return JsonResponse({
                     "success": True, 
@@ -427,7 +474,7 @@ class SuccessView(View):
         if student.kyc_status not in ('MIN_KYC', 'FULL_KYC') and student.application_status != 'ISSUED':
             return redirect(reverse('portal:landing', kwargs={'tracking_id': tracking_id}))
 
-        masked_mobile = f"XXXXXX{student.mobile[-4:]}" if student.mobile and len(student.mobile) >= 4 else "XXXXXX1643"
+        masked_mobile = f"XXXXXX{student.mobile[-4:]}" if student.mobile and len(student.mobile) >= 4 else "XXXXXX0000"
 
         default_content = """<p>Please note: As per RBI's Master Direction on PPIs, a Small PPI carries reduced limits on loading, balance and usage, and cannot be used for cash withdrawal. To enhance your limits and unlock full features, please complete Full KYC.</p>
 <h4>Next Steps:</h4>
@@ -451,12 +498,6 @@ class SuccessView(View):
                 'content': default_content
             }
         )
-
-        # Force update content in case it already exists in the DB with the old text
-        if cms_page.content != default_content:
-            cms_page.content = default_content
-            cms_page.title = 'Registration Successful!'
-            cms_page.save()
 
         # Replace the placeholder dynamically for the current student
         dynamic_content = cms_page.content.replace('{mobile}', masked_mobile)
@@ -510,8 +551,8 @@ class M2PCryptoTestView(View):
 
         student = Student.objects.first()
         if not student:
-            student_apaar_id = "Vikes81643"
-            student_mobile = "9045781643"
+            student_apaar_id = "TEST-APAAR-001"
+            student_mobile = "9999999999"
         else:
             student_apaar_id = student.apaar_id
             student_mobile = student.mobile

@@ -247,8 +247,8 @@ class M2PClient:
         mapped_gender = gender_map.get(student.gender, 'MALE')
 
         # Address details extraction
-        perm = student.permanent_address or {}
-        curr = student.current_address or {}
+        perm = student.permanent_address if isinstance(student.permanent_address, dict) else {}
+        curr = student.current_address if isinstance(student.current_address, dict) else {}
         
         perm_addr1 = perm.get('address1') or perm.get('address_line') or "Address Line 1"
         perm_addr2 = perm.get('address2') or ""

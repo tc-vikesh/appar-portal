@@ -325,11 +325,13 @@ def flatten_abc_data(data):
 
         permanent_addr = additional.get('PERMANENT_ADDRESS')
         if isinstance(permanent_addr, dict):
+            is_same = permanent_addr.get('SAME_AS_CURRENT') is True or permanent_addr.get('same_as_current') is True
+            curr_dict = flat.get('current_address') if isinstance(flat.get('current_address'), dict) else {}
             flat['permanent_address'] = {
-                'address1': permanent_addr.get('ADDRESS_LINE'),
-                'city': permanent_addr.get('CITY'),
-                'state': permanent_addr.get('STATE'),
-                'pincode': permanent_addr.get('PIN_CODE'),
+                'address1': permanent_addr.get('ADDRESS_LINE') or (curr_dict.get('address1') if is_same else None),
+                'city': permanent_addr.get('CITY') or (curr_dict.get('city') if is_same else None),
+                'state': permanent_addr.get('STATE') or (curr_dict.get('state') if is_same else None),
+                'pincode': permanent_addr.get('PIN_CODE') or (curr_dict.get('pincode') if is_same else None),
                 'same_as_current': permanent_addr.get('SAME_AS_CURRENT')
             }
         else:
@@ -547,8 +549,6 @@ class ApplicationStatusView(LoggingAPIView):
 
                 if app_status_changed or kyc_status_changed:
                     student.save()
-                    dispatcher = ABCWebhookDispatcher()
-                    dispatcher.dispatch_kyc_status_update(student, "Status updated from TWA pull")
         except Exception:
             pass
 

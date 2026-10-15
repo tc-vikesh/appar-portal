@@ -52,13 +52,11 @@ class Student(models.Model):
     otp_locked = models.BooleanField(default=False)
     otp_locked_until = models.DateTimeField(null=True, blank=True)
     application_status = models.CharField(
-        max_length=30,
-        choices=APPLICATION_STATUS_CHOICES,
+        max_length=50,
         default='RECEIVED'
     )
     kyc_status = models.CharField(
-        max_length=30,
-        choices=KYC_STATUS_CHOICES,
+        max_length=50,
         default='PENDING'
     )
     m2p_entity_id = models.CharField(max_length=100, null=True, blank=True)
