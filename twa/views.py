@@ -36,11 +36,18 @@ class WebhookLoggingAPIView(APIView):
         else:
             webhook_type = 'inbound_twa_unknown'
 
+        # Gather request headers
+        headers = {
+            k: v for k, v in request.META.items()
+            if k.startswith('HTTP_') or k in ('CONTENT_TYPE', 'CONTENT_LENGTH', 'REMOTE_ADDR')
+        }
+
         # Initialize WebhookLog before processing view logic
         log = WebhookLog(
             direction='inbound',
             webhook_type=webhook_type,
             endpoint=path,
+            headers=make_json_safe(headers),
             source_ip=source_ip,
             ip_whitelisted=ip_whitelisted,
         )

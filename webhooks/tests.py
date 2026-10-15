@@ -104,6 +104,9 @@ class WebhookDispatcherTestCase(TestCase):
         self.assertEqual(log.endpoint, settings.ABC_KYC_STATUS_WEBHOOK_URL)
         self.assertEqual(log.http_status, 200)
         self.assertTrue(log.success)
+        self.assertIsNotNone(log.headers)
+        self.assertEqual(log.headers.get("X-Client-ID"), settings.ABC_CLIENT_ID)
+        self.assertIn("X-Client-HMAC", log.headers)
 
     # 2. Dispatcher Unit Tests (Failure cases - logged silently)
     @patch('requests.post')

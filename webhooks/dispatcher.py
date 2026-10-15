@@ -119,6 +119,7 @@ class ABCWebhookDispatcher:
                 'X-Client-HMAC': signature,
                 'Content-Type': 'application/json'
             }
+            log.headers = make_json_safe(headers)
 
             # Encrypt Payload using AES-256-GCM
             from applications.crypto import encrypt_abc_payload, decrypt_abc_payload

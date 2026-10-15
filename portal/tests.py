@@ -1,6 +1,6 @@
 import json
 from unittest.mock import patch, MagicMock
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.conf import settings
 from rest_framework import status
@@ -291,6 +291,7 @@ class PortalTestCase(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertRedirects(response, reverse('portal:success', kwargs={'tracking_id': self.student.tracking_id}))
 
+    @override_settings(MOCK_CASHFREE_APIS=False)
     @patch('requests.post')
     def test_aadhaar_client_logs_last_4_digits_only(self, mock_post):
         """Test AadhaarClient logging stores only the last 4 digits of Aadhaar in logs."""
