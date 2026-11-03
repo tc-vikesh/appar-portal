@@ -29,6 +29,8 @@ class WebhookLogAdmin(admin.ModelAdmin):
         'direction',
         'endpoint',
         'payload',
+        'encrypted_payload',
+        'headers',
         'source_ip',
         'ip_whitelisted',
         'http_status',

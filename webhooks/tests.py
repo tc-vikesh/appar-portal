@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import json
 import time
 from unittest.mock import patch, MagicMock
@@ -83,8 +85,15 @@ class WebhookDispatcherTestCase(TestCase):
         headers = kwargs.get("headers", {})
         self.assertIn("X-Client-ID", headers)
         self.assertIn("X-Client-Timestamp", headers)
-        self.assertIn("X-Client-HMAC", headers)
         self.assertEqual(headers["X-Client-ID"], settings.ABC_CLIENT_ID)
+        
+        # Verify HMAC signature calculation: HMAC-SHA256(clientId\ntimestamp, key=ABC_CLIENT_SECRET)
+        expected_sig = hmac.new(
+            settings.ABC_CLIENT_SECRET.encode('utf-8'),
+            f"{headers['X-Client-ID']}\n{headers['X-Client-Timestamp']}".encode('utf-8'),
+            hashlib.sha256
+        ).hexdigest()
+        self.assertEqual(headers["X-Client-HMAC"], expected_sig)
         
         from applications.crypto import decrypt_abc_payload
         payload = decrypt_abc_payload(kwargs.get("json", {}).get("encryptedData"))
@@ -104,6 +113,9 @@ class WebhookDispatcherTestCase(TestCase):
         self.assertEqual(log.endpoint, settings.ABC_KYC_STATUS_WEBHOOK_URL)
         self.assertEqual(log.http_status, 200)
         self.assertTrue(log.success)
+        self.assertIsNotNone(log.headers)
+        self.assertEqual(log.headers.get("X-Client-ID"), settings.ABC_CLIENT_ID)
+        self.assertIn("X-Client-HMAC", log.headers)
 
     # 2. Dispatcher Unit Tests (Failure cases - logged silently)
     @patch('requests.post')
