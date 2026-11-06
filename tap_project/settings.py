@@ -168,6 +168,14 @@ CASHFREE_BASE_URL = env('CASHFREE_BASE_URL', default='https://sandbox.cashfree.c
 CASHFREE_CLIENT_ID = env('CASHFREE_CLIENT_ID', default=env('PAN_CLIENT_ID', default=''))
 CASHFREE_CLIENT_SECRET = env('CASHFREE_CLIENT_SECRET', default=env('CASHFREE_SECRET_KEY', default=env('PAN_CLIENT_SECRET', default='')))
 
+# Cashfree DigiLocker (Aadhaar) consent flow
+# Public https base used to build the DigiLocker redirect_url (e.g. a tunnel for local testing).
+# Blank = derive from the request host / PORTAL_BASE_URL.
+DIGILOCKER_REDIRECT_BASE_URL = env('DIGILOCKER_REDIRECT_BASE_URL', default='')
+DIGILOCKER_USER_FLOW =env('DIGILOCKER_USER_FLOW', default='signup')  # signup or signin
+DIGILOCKER_PURPOSE = env('DIGILOCKER_PURPOSE', default='KYC Verification')  # max 50 chars
+DIGILOCKER_COMPANY_NAME = env('DIGILOCKER_COMPANY_NAME', default='')  # blank = Cashfree account name
+
 CSRF_TRUSTED_ORIGINS = env.list(
     "CSRF_TRUSTED_ORIGINS",
     default=[]

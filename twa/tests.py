@@ -401,12 +401,13 @@ class TWATestCase(TestCase):
         self.assertEqual(logged_payload.get("processing_status"), "PROCESSING")
 
     # 6. Integration Flow: Portal OTP Verify to TWA Sync
-    @patch('applications.aadhaar_client.AadhaarClient.aadhaar_verify_otp')
+    @patch('applications.aadhaar_client.AadhaarClient.digilocker_get_document')
+    @patch('applications.aadhaar_client.AadhaarClient.digilocker_get_status')
     @patch('applications.aadhaar_client.AadhaarClient.name_match')
     @patch('m2p.client.M2PClient.generate_otp')
     @patch('m2p.client.M2PClient.register_min_kyc')
     @patch('twa.client.TWAClient.sync_onboard')
-    def test_portal_otp_success_triggers_twa_sync(self, mock_twa_sync, mock_m2p_register, mock_m2p_generate, mock_name_match, mock_verify_otp):
+    def test_portal_otp_success_triggers_twa_sync(self, mock_twa_sync, mock_m2p_register, mock_m2p_generate, mock_name_match, mock_dl_status, mock_dl_document):
         """Verify that when a student completes KYC in portal, it triggers outbound TWA onboard sync."""
         self.student.aadhaar_number = "9012"
         self.student.aadhaar_ref_id = "REF-MOCK-A1"
@@ -414,7 +415,8 @@ class TWATestCase(TestCase):
         self.student.kyc_status = "PENDING"
         self.student.save()
 
-        mock_verify_otp.return_value = {"status": "SUCCESS", "data": {"name": "Vikesh Sharma TWA"}}
+        mock_dl_status.return_value = {"status": "AUTHENTICATED"}
+        mock_dl_document.return_value = {"name": "Vikesh Sharma TWA", "aadhaar_number": "XXXXXXXX9012"}
         mock_name_match.return_value = {"status": "SUCCESS", "data": {"score": 0.95}}
         mock_m2p_generate.return_value = {"success": True}
 
@@ -448,16 +450,11 @@ class TWATestCase(TestCase):
             return {"success": True}
         mock_twa_sync.side_effect = mock_sync_side_effect
 
-        # Step 1: Verify Aadhaar OTP (redirects to M2P OTP page)
-        verify_url = reverse('portal:aadhaar_verify_otp', kwargs={'tracking_id': self.student.tracking_id})
-        response = self.client.post(
-            verify_url,
-            data=json.dumps({'otp': '123456', 'ref_id': 'REF-MOCK-A1'}),
-            content_type='application/json'
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.json()["success"])
-        self.assertIn("/otp/", response.json()["redirect_url"])
+        # Step 1: DigiLocker callback (verifies Aadhaar, redirects to M2P OTP page)
+        callback_url = reverse('portal:digilocker_callback', kwargs={'tracking_id': self.student.tracking_id})
+        response = self.client.get(callback_url)
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/otp/", response.url)
 
         # Step 2: Submit M2P OTP (completes registration and triggers TWA sync)
         otp_url = reverse('portal:otp_verify', kwargs={'tracking_id': self.student.tracking_id})

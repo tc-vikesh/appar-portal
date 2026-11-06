@@ -1,6 +1,6 @@
 from django.urls import path
 from portal.views import (
-    LandingView, AadhaarSendOTPView, AadhaarVerifyOTPView, 
+    LandingView, DigiLockerStartView, DigiLockerCallbackView, 
     OTPVerifyView, M2PResendOTPView, SuccessView, LockedView, M2PCryptoTestView
 )
 
@@ -10,8 +10,8 @@ from django.conf import settings
 
 urlpatterns = [
     path('portal/<str:tracking_id>/', LandingView.as_view(), name='landing'),
-    path('portal/<str:tracking_id>/aadhaar/send-otp/', AadhaarSendOTPView.as_view(), name='aadhaar_send_otp'),
-    path('portal/<str:tracking_id>/aadhaar/verify-otp/', AadhaarVerifyOTPView.as_view(), name='aadhaar_verify_otp'),
+    path('portal/<str:tracking_id>/aadhaar/digilocker/start/', DigiLockerStartView.as_view(), name='digilocker_start'),
+    path('portal/<str:tracking_id>/aadhaar/digilocker/callback/', DigiLockerCallbackView.as_view(), name='digilocker_callback'),
     path('portal/<str:tracking_id>/otp/', OTPVerifyView.as_view(), name='otp_verify'),
     path('portal/<str:tracking_id>/m2p/resend-otp/', M2PResendOTPView.as_view(), name='m2p_resend_otp'),
     path('portal/<str:tracking_id>/success/', SuccessView.as_view(), name='success'),

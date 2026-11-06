@@ -18,7 +18,8 @@ from applications.models import Student
 from cms.models import CMSPage
 from m2p.client import M2PClient, format_m2p_error
 from twa.client import TWAClient
-from applications.aadhaar_client import AadhaarClient
+from applications.aadhaar_client import AadhaarClient, new_digilocker_verification_id
+from applications.views import get_portal_redirect_url
 from webhooks.dispatcher import ABCWebhookDispatcher
 
 @method_decorator(never_cache, name='dispatch')
@@ -38,22 +39,46 @@ class LandingView(View):
         if student.is_locked():
             return redirect(reverse('portal:locked', kwargs={'tracking_id': tracking_id}))
 
-        return render(request, 'portal/landing.html', {'student': student})
+        return render(request, 'portal/landing.html', {
+            'student': student,
+            'digilocker_message': DIGILOCKER_MESSAGES.get(request.GET.get('dl', '')),
+        })
+
+
+DIGILOCKER_START_COOLDOWN_SECS = 10
+
+# Messages shown on the landing page after a DigiLocker redirect (keyed by ?dl=<key>)
+DIGILOCKER_MESSAGES = {
+    'pending': "DigiLocker verification was not completed. Please try again.",
+    'expired': "The DigiLocker link expired. Please start verification again.",
+    'denied': "You declined consent on DigiLocker. Consent is required to continue.",
+    'mismatch': "The name on your Aadhaar does not match your application records. Please try again.",
+    'error': "We could not complete DigiLocker verification. Please try again.",
+}
+
+
+def _landing_redirect(tracking_id, dl_key):
+    return redirect(f"{reverse('portal:landing', kwargs={'tracking_id': tracking_id})}?dl={dl_key}")
+
+
+def _lock_student(student):
+    cooldown_mins = getattr(settings, 'OTP_LOCKOUT_MINUTES', 15)
+    student.otp_locked = True
+    student.otp_locked_until = timezone.now() + timedelta(minutes=cooldown_mins)
 
 
 @method_decorator(never_cache, name='dispatch')
-class AadhaarSendOTPView(View):
+class DigiLockerStartView(View):
     """
-    POST /portal/<tracking_id>/aadhaar/send-otp/
-    AJAX endpoint to initiate Aadhaar verification by sending an OTP.
+    POST /portal/<tracking_id>/aadhaar/digilocker/start/
+    AJAX endpoint: validates consents, creates a Cashfree DigiLocker consent URL and returns it.
     """
     def post(self, request, tracking_id):
         student = get_object_or_404(Student, tracking_id=tracking_id)
 
-        # If student has already completed KYC or card is issued, prevent re-sending OTP
         if student.kyc_status in ('MIN_KYC', 'FULL_KYC') or student.application_status == 'ISSUED':
             return JsonResponse({
-                "success": False, 
+                "success": False,
                 "error": "KYC verification has already been completed.",
                 "redirect_url": reverse('portal:success', kwargs={'tracking_id': tracking_id})
             }, status=400)
@@ -61,14 +86,13 @@ class AadhaarSendOTPView(View):
         if student.is_locked():
             return JsonResponse({"success": False, "error": "Verification locked due to too many failed attempts.", "locked": True}, status=403)
 
-        # 30-second rate limit check
         now_ts = time.time()
-        last_sent = request.session.get(f"last_aadhaar_otp_{tracking_id}")
-        if last_sent and (now_ts - last_sent) < 30:
-            wait_time = int(30 - (now_ts - last_sent))
+        last_started = request.session.get(f"last_digilocker_start_{tracking_id}")
+        if last_started and (now_ts - last_started) < DIGILOCKER_START_COOLDOWN_SECS:
+            wait_time = int(DIGILOCKER_START_COOLDOWN_SECS - (now_ts - last_started)) + 1
             return JsonResponse({
                 "success": False,
-                "error": f"Please wait {wait_time} seconds before requesting a new Aadhaar OTP."
+                "error": f"Please wait {wait_time} seconds before starting DigiLocker verification again."
             }, status=429)
 
         try:
@@ -76,201 +100,157 @@ class AadhaarSendOTPView(View):
         except (ValueError, TypeError):
             return JsonResponse({"success": False, "error": "Invalid JSON payload."}, status=400)
 
-        aadhaar_number = str(body.get('aadhaar_number') or '').strip()
-        consent_aadhaar_ovd = body.get('consent_aadhaar_ovd') is True
-        consent_ckycr = body.get('consent_ckycr') is True
-        consent_address_mismatch = body.get('consent_address_mismatch') is True
-        consent_kyc_ppi = body.get('consent_kyc_ppi') is True
-        consent_terms_conditions = body.get('consent_terms_conditions') is True
-
-        if not (consent_aadhaar_ovd and consent_ckycr and consent_address_mismatch and consent_kyc_ppi and consent_terms_conditions):
+        consents = {
+            name: body.get(name) is True
+            for name in ('consent_aadhaar_ovd', 'consent_ckycr', 'consent_address_mismatch',
+                         'consent_kyc_ppi', 'consent_terms_conditions')
+        }
+        if not all(consents.values()):
             return JsonResponse({"success": False, "error": "You must accept all 5 terms and provide all consents to proceed."}, status=400)
 
-        if not aadhaar_number:
-            return JsonResponse({"success": False, "error": "Aadhaar number is required."}, status=400)
-        elif not re.match(r'^\d{12}$', aadhaar_number):
-            return JsonResponse({"success": False, "error": "Invalid Aadhaar number format. It must be exactly 12 digits."}, status=400)
+        verification_id = new_digilocker_verification_id()
+        redirect_base = getattr(settings, 'DIGILOCKER_REDIRECT_BASE_URL', '').rstrip('/')
+        if redirect_base:
+            callback_url = f"{redirect_base}/portal/{tracking_id}/aadhaar/digilocker/callback/"
+        else:
+            callback_url = get_portal_redirect_url(request, tracking_id) + "aadhaar/digilocker/callback/"
+
+        # Cashfree rejects non-https redirect URLs (e.g. http://localhost); fail early with a clear message
+        if not callback_url.startswith('https://') and not getattr(settings, 'MOCK_CASHFREE_APIS', False):
+            return JsonResponse({
+                "success": False,
+                "error": "DigiLocker needs an https redirect URL. Set PORTAL_BASE_URL or DIGILOCKER_REDIRECT_BASE_URL to a public https address."
+            }, status=500)
 
         client = AadhaarClient()
         try:
-            resp = client.aadhaar_send_otp(aadhaar_number, student)
-            
-            success = resp.get("status") == "SUCCESS"
-            
-            if success:
-                request.session[f"last_aadhaar_otp_{tracking_id}"] = now_ts
-                # Store full 12 digits in session so M2P registration receives the full 12-digit number
-                request.session[f"aadhaar_full_{tracking_id}"] = aadhaar_number
-
-                # Safely extract last 4 digits of Aadhaar for database storage
-                aadhaar_last_4 = ""
-                if aadhaar_number and len(aadhaar_number) >= 4:
-                    aadhaar_last_4 = aadhaar_number[-4:]
-                elif aadhaar_number:
-                    aadhaar_last_4 = aadhaar_number
-                ref_id = resp.get("ref_id") or resp.get("data", {}).get("ref_id")
-                # Save aadhaar number (last 4 digits only), ref_id, and consents on student record
-                student.aadhaar_number = aadhaar_last_4
-                student.aadhaar_ref_id = ref_id
-                student.consent_aadhaar_ovd = consent_aadhaar_ovd
-                student.consent_ckycr = consent_ckycr
-                student.consent_address_mismatch = consent_address_mismatch
-                student.consent_kyc_ppi = consent_kyc_ppi
-                student.consent_terms_conditions = consent_terms_conditions
-                student.save()
-
-                return JsonResponse({"success": True, "ref_id": ref_id})
-            else:
-                err_msg = resp.get("message") or "Failed to trigger Aadhaar OTP via Cashfree."
-                return JsonResponse({"success": False, "error": err_msg})
+            resp = client.digilocker_create_url(verification_id, callback_url, student)
         except Exception as exc:
             return JsonResponse({"success": False, "error": f"Aadhaar service error: {str(exc)}"}, status=500)
 
+        url = resp.get("url") if isinstance(resp, dict) else None
+        if not url:
+            err_msg = (resp.get("message") if isinstance(resp, dict) else None) or "Failed to start DigiLocker verification."
+            return JsonResponse({"success": False, "error": err_msg})
+
+        request.session[f"last_digilocker_start_{tracking_id}"] = now_ts
+        # aadhaar_ref_id holds the Cashfree verification_id for this DigiLocker session
+        student.aadhaar_ref_id = verification_id
+        for name, value in consents.items():
+            setattr(student, name, value)
+        student.save()
+
+        return JsonResponse({"success": True, "url": url})
+
 
 @method_decorator(never_cache, name='dispatch')
-class AadhaarVerifyOTPView(View):
+class DigiLockerCallbackView(View):
     """
-    POST /portal/<tracking_id>/aadhaar/verify-otp/
-    AJAX endpoint to verify OTP, name-match and proceed to M2P registration.
+    GET /portal/<tracking_id>/aadhaar/digilocker/callback/
+    DigiLocker redirects the student here. Status is always re-checked server-to-server with
+    Cashfree (query parameters are never trusted); then the Aadhaar document is fetched,
+    name-matched, and the M2P OTP is generated.
     """
-    def post(self, request, tracking_id):
-        with transaction.atomic():
-            student = Student.objects.select_for_update().get(tracking_id=tracking_id)
+    def get(self, request, tracking_id):
+        client = AadhaarClient()
 
-            # If student has already completed KYC or card is issued, prevent re-verifying
+        with transaction.atomic():
+            student = get_object_or_404(Student.objects.select_for_update(), tracking_id=tracking_id)
+
             if student.kyc_status in ('MIN_KYC', 'FULL_KYC') or student.application_status == 'ISSUED':
-                return JsonResponse({
-                    "success": False, 
-                    "error": "KYC verification has already been completed.",
-                    "redirect_url": reverse('portal:success', kwargs={'tracking_id': tracking_id})
-                }, status=400)
+                return redirect(reverse('portal:success', kwargs={'tracking_id': tracking_id}))
 
             if student.is_locked():
-                return JsonResponse({"success": False, "error": "Verification locked.", "locked": True}, status=403)
+                return redirect(reverse('portal:locked', kwargs={'tracking_id': tracking_id}))
+
+            # Repeated callback after a successful verification: do not re-run anything
+            if student.aadhaar_verified:
+                return redirect(reverse('portal:otp_verify', kwargs={'tracking_id': tracking_id}))
+
+            verification_id = student.aadhaar_ref_id
+            if not verification_id:
+                return _landing_redirect(tracking_id, 'error')
 
             try:
-                body = json.loads(request.body)
-            except (ValueError, TypeError):
-                return JsonResponse({"success": False, "error": "Invalid JSON payload."}, status=400)
+                status_resp = client.digilocker_get_status(verification_id, student)
+            except Exception:
+                return _landing_redirect(tracking_id, 'error')
 
-            otp = str(body.get('otp') or '').strip()
-            ref_id = str(body.get('ref_id') or '').strip()
-            aadhaar_from_req = str(body.get('aadhaar_number') or '').strip()
-            if aadhaar_from_req and len(aadhaar_from_req) == 12:
-                request.session[f"aadhaar_full_{tracking_id}"] = aadhaar_from_req
-
-            if not otp:
-                return JsonResponse({"success": False, "error": "OTP is required."}, status=400)
-            if not ref_id:
-                return JsonResponse({"success": False, "error": "Reference ID is missing."}, status=400)
-
-            # Increment attempt count
-            student.otp_attempt_count += 1
-
-            # Check attempt limit
-            if student.otp_attempt_count > 3:
-                cooldown_mins = getattr(settings, 'OTP_LOCKOUT_MINUTES', 15)
-                student.otp_locked = True
-                student.otp_locked_until = timezone.now() + timedelta(minutes=cooldown_mins)
+            dl_status = (status_resp.get("status") if isinstance(status_resp, dict) else None) or ""
+            dl_status = str(dl_status).upper()
+            if dl_status == 'PENDING':
+                return _landing_redirect(tracking_id, 'pending')
+            if dl_status in ('EXPIRED', 'CONSENT_DENIED'):
+                student.aadhaar_ref_id = None
                 student.save()
-                return JsonResponse({"success": False, "error": "Too many failed attempts. Verification locked.", "locked": True}, status=403)
+                return _landing_redirect(tracking_id, 'expired' if dl_status == 'EXPIRED' else 'denied')
+            if dl_status != 'AUTHENTICATED':
+                return _landing_redirect(tracking_id, 'error')
 
-            student.save()
+            try:
+                doc_resp = client.digilocker_get_document(verification_id, student)
+            except Exception:
+                return _landing_redirect(tracking_id, 'error')
 
-        client = AadhaarClient()
-        try:
-            # Verify OTP
-            verify_resp = client.aadhaar_verify_otp(otp, ref_id, student)
-            verify_success = verify_resp.get("status") in ("VALID", "SUCCESS")
-            
-            if not verify_success:
-                err_msg = verify_resp.get("message") or "Invalid Aadhaar OTP code."
-                # If they hit 3 attempts exactly and failed, lock them out
-                if student.otp_attempt_count >= 3:
-                    cooldown_mins = getattr(settings, 'OTP_LOCKOUT_MINUTES', 15)
-                    student.otp_locked = True
-                    student.otp_locked_until = timezone.now() + timedelta(minutes=cooldown_mins)
-                    student.save()
-                    return JsonResponse({"success": False, "error": err_msg, "locked": True}, status=403)
-                
-                remaining = max(3 - student.otp_attempt_count, 0)
-                return JsonResponse({"success": False, "error": f"{err_msg} ({remaining} attempts remaining)", "locked": False})
-
-            # Retrieve Aadhaar name
-            data_block = verify_resp.get("data", {}) if "data" in verify_resp else verify_resp
-            aadhaar_name = data_block.get("name") or data_block.get("aadhaar_name") or ""
-            
+            doc = doc_resp.get("data") if isinstance(doc_resp, dict) and isinstance(doc_resp.get("data"), dict) else doc_resp
+            if not isinstance(doc, dict):
+                doc = {}
+            aadhaar_name = doc.get("name") or ""
             if not aadhaar_name:
-                return JsonResponse({"success": False, "error": "Failed to retrieve name from Aadhaar verification response."})
+                return _landing_redirect(tracking_id, 'error')
 
-            # Call Name Match
-            name_resp = client.name_match(student.full_name, aadhaar_name, student)
-            name_success = name_resp.get("status") == "SUCCESS" or "score" in name_resp or ("data" in name_resp and "score" in name_resp.get("data", {}))
-            
-            if not name_success:
-                err_msg = name_resp.get("message") or "Name matching service failed."
-                return JsonResponse({"success": False, "error": err_msg})
+            try:
+                name_resp = client.name_match(student.full_name, aadhaar_name, student)
+            except Exception:
+                return _landing_redirect(tracking_id, 'error')
 
             score_block = (name_resp.get("data") or name_resp) if isinstance(name_resp, dict) else {}
             if not isinstance(score_block, dict):
                 score_block = {}
             score_val = score_block.get("score")
             if score_val is None:
-                score_val = 0.0
-            
+                return _landing_redirect(tracking_id, 'error')
             match_score = float(score_val)
             if match_score <= 1.0:
                 match_score = match_score * 100.0
 
-            # Store match score
             student.aadhaar_name_match_score = int(match_score)
             if match_score < 90.0:
+                # A failed name match counts as a failed attempt; start fresh on the next try
+                student.otp_attempt_count += 1
+                student.aadhaar_ref_id = None
                 if student.otp_attempt_count >= 3:
-                    cooldown_mins = getattr(settings, 'OTP_LOCKOUT_MINUTES', 15)
-                    student.otp_locked = True
-                    student.otp_locked_until = timezone.now() + timedelta(minutes=cooldown_mins)
+                    _lock_student(student)
                 student.save()
-                return JsonResponse({
-                    "success": False, 
-                    "error": f"Aadhaar name mismatch: match score is {int(match_score)}% (minimum 90% required).",
-                    "locked": student.otp_locked
-                }, status=403 if student.otp_locked else 200)
+                if student.otp_locked:
+                    return redirect(reverse('portal:locked', kwargs={'tracking_id': tracking_id}))
+                return _landing_redirect(tracking_id, 'mismatch')
 
+            masked_aadhaar = re.sub(r'\D', '', str(doc.get("aadhaar_number") or ""))
+            student.aadhaar_number = masked_aadhaar[-4:] or None
             student.aadhaar_verified = True
             student.save()
 
-            # Proceed to register with M2P - first generate OTP and redirect to M2P verification page
-            m2p = M2PClient()
-            try:
-                m2p_response = m2p.generate_otp(student)
-                result_block = m2p_response.get("result") or {}
-                m2p_success = (
-                    not m2p_response.get("exception") and (
-                        m2p_response.get("success") is True or 
-                        result_block.get("success") is True
-                    )
+        # Aadhaar verified: generate the M2P OTP (resend is available on the OTP page if this fails)
+        m2p = M2PClient()
+        try:
+            m2p_response = m2p.generate_otp(student)
+            result_block = m2p_response.get("result") or {}
+            m2p_success = (
+                not m2p_response.get("exception") and (
+                    m2p_response.get("success") is True or
+                    result_block.get("success") is True
                 )
+            )
+            if m2p_success:
+                # Reset attempts count for the M2P OTP verification stage
+                student.otp_attempt_count = 0
+                student.save()
+        except Exception:
+            pass
 
-                if m2p_success:
-                    # Reset attempts count for the M2P OTP verification stage
-                    student.otp_attempt_count = 0
-                    student.save()
-                    return JsonResponse({"success": True, "redirect_url": reverse('portal:otp_verify', kwargs={'tracking_id': tracking_id})})
-                else:
-                    err_msg = format_m2p_error(m2p_response, "Failed to generate OTP from KYC provider.")
-                    return JsonResponse({"success": False, "error": f"KYC OTP generation failed: {err_msg}"})
+        return redirect(reverse('portal:otp_verify', kwargs={'tracking_id': tracking_id}))
 
-            except Exception as exc:
-                return JsonResponse({"success": False, "error": f"KYC server OTP generation error: {str(exc)}"}, status=500)
-        except Exception as exc:
-            try:
-                with transaction.atomic():
-                    s = Student.objects.select_for_update().get(id=student.id)
-                    s.otp_attempt_count = max(0, s.otp_attempt_count - 1)
-                    s.save()
-            except Exception:
-                pass
-            return JsonResponse({"success": False, "error": f"Verification server error: {str(exc)}"}, status=500)
 
 
 @method_decorator(never_cache, name='dispatch')
@@ -343,9 +323,10 @@ class OTPVerifyView(View):
         # Call M2P Client to Register MIN KYC
         m2p = M2PClient()
         try:
-            # Pass full 12-digit Aadhaar to M2P from session (fallback to student.aadhaar_number if not in session)
-            full_aadhaar = request.session.get(f"aadhaar_full_{tracking_id}") or student.aadhaar_number
-            m2p_response = m2p.register_min_kyc(student, otp, full_aadhaar)
+            # DigiLocker only yields a masked Aadhaar, so the Cashfree verification_id is sent as the
+            # AADHAARREF documentNo. TODO: confirm with M2P what reference they expect here.
+            aadhaar_doc_ref = student.aadhaar_ref_id or student.aadhaar_number
+            m2p_response = m2p.register_min_kyc(student, otp, aadhaar_doc_ref)
             result_block = m2p_response.get("result") or {}
             m2p_success = (
                 not m2p_response.get("exception") and (
@@ -372,12 +353,7 @@ class OTPVerifyView(View):
                 # Ensure only the last 4 digits of Aadhaar are stored in the database
                 if student.aadhaar_number and len(student.aadhaar_number) > 4:
                     student.aadhaar_number = student.aadhaar_number[-4:]
-                elif full_aadhaar and len(full_aadhaar) >= 4:
-                    student.aadhaar_number = full_aadhaar[-4:]
                 student.save()
-
-                # Purge full 12-digit Aadhaar from session upon completion
-                request.session.pop(f"aadhaar_full_{tracking_id}", None)
 
                 # Trigger ABC webhook for KYC status update
                 dispatcher = ABCWebhookDispatcher()
@@ -415,7 +391,6 @@ class OTPVerifyView(View):
             student.otp_locked = True
             student.otp_locked_until = timezone.now() + timedelta(minutes=cooldown_mins)
             student.save()
-            request.session.pop(f"aadhaar_full_{tracking_id}", None)
             return redirect(reverse('portal:locked', kwargs={'tracking_id': tracking_id}))
         return render(request, 'portal/otp.html', {
             'student': student,
