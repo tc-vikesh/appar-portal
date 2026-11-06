@@ -98,163 +98,237 @@ class PortalTestCase(TestCase):
         self.assertIsNone(self.student.aadhaar_ref_id)
         self.assertFalse(self.student.aadhaar_verified)
 
-        # Verify Aadhaar input is NOT prefilled in response HTML
-        self.assertNotContains(response, 'value="123456789012"')
+        # Verify the old Aadhaar number is not echoed back in the response HTML
+        self.assertNotContains(response, '123456789012')
 
-    @patch('applications.aadhaar_client.AadhaarClient.aadhaar_send_otp')
-    @patch('m2p.client.M2PClient.generate_otp')
-    def test_portal_landing_send_otp_success(self, mock_generate_otp, mock_send_otp):
-        """Test POST /aadhaar/send-otp/ saves Aadhaar and ref_id on success."""
-        mock_send_otp.return_value = {"status": "SUCCESS", "ref_id": "REF-MOCK-A1"}
-        mock_generate_otp.return_value = {"success": True}
+    ALL_CONSENTS = {
+        "consent_aadhaar_ovd": True,
+        "consent_ckycr": True,
+        "consent_address_mismatch": True,
+        "consent_kyc_ppi": True,
+        "consent_terms_conditions": True
+    }
+
+    def _start_url(self):
+        return reverse('portal:digilocker_start', kwargs={'tracking_id': self.student.tracking_id})
+
+    def _callback_url(self):
+        return reverse('portal:digilocker_callback', kwargs={'tracking_id': self.student.tracking_id})
+
+    def _landing_url(self):
+        return reverse('portal:landing', kwargs={'tracking_id': self.student.tracking_id})
+
+    @patch('applications.aadhaar_client.AadhaarClient.digilocker_create_url')
+    def test_digilocker_start_success(self, mock_create_url):
+        """Test POST /aadhaar/digilocker/start/ returns the consent URL and saves verification_id + consents."""
+        mock_create_url.return_value = {"status": "PENDING", "url": "https://digilocker.example/consent/abc"}
 
         response = self.client.post(
-            reverse('portal:aadhaar_send_otp', kwargs={'tracking_id': self.student.tracking_id}),
-            data=json.dumps({
-                "aadhaar_number": "123456789012",
-                "consent_aadhaar_ovd": True,
-                "consent_ckycr": True,
-                "consent_address_mismatch": True,
-                "consent_kyc_ppi": True,
-                "consent_terms_conditions": True
-            }),
-            content_type='application/json'
+            self._start_url(), data=json.dumps(self.ALL_CONSENTS), content_type='application/json'
         )
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertTrue(data["success"])
-        self.assertEqual(data["ref_id"], "REF-MOCK-A1")
+        self.assertEqual(data["url"], "https://digilocker.example/consent/abc")
 
-        # Verify student Aadhaar info is saved (last 4 digits per compliance)
         self.student.refresh_from_db()
-        self.assertEqual(self.student.aadhaar_number, "9012")
-        self.assertEqual(self.student.aadhaar_ref_id, "REF-MOCK-A1")
+        self.assertTrue(self.student.aadhaar_ref_id.startswith("TAP-"))
+        self.assertTrue(self.student.consent_aadhaar_ovd)
+        self.assertTrue(self.student.consent_terms_conditions)
 
-    def test_portal_landing_send_otp_validation(self):
-        """Test POST /aadhaar/send-otp/ validation rules (Aadhaar length and consent checkbox)."""
-        # Test 1: Missing consent
-        response1 = self.client.post(
-            reverse('portal:aadhaar_send_otp', kwargs={'tracking_id': self.student.tracking_id}),
-            data=json.dumps({
-                "aadhaar_number": "123456789012",
-                "consent_aadhaar_ovd": False
-            }),
+        # Cashfree gets the verification_id and the callback URL on this portal
+        verification_id, callback_url, _student = mock_create_url.call_args[0]
+        self.assertEqual(verification_id, self.student.aadhaar_ref_id)
+        self.assertTrue(callback_url.endswith("/aadhaar/digilocker/callback/"))
+
+    @override_settings(MOCK_CASHFREE_APIS=False, DIGILOCKER_REDIRECT_BASE_URL='', PORTAL_BASE_URL='')
+    @patch('applications.aadhaar_client.AadhaarClient.digilocker_create_url')
+    def test_digilocker_start_rejects_non_https_redirect(self, mock_create_url):
+        """Test start fails early (no Cashfree call) when the callback URL would not be https, e.g. localhost."""
+        response = self.client.post(
+            self._start_url(), data=json.dumps(self.ALL_CONSENTS), content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 500)
+        self.assertIn("https", response.json()["error"])
+        mock_create_url.assert_not_called()
+
+    @override_settings(MOCK_CASHFREE_APIS=False, DIGILOCKER_REDIRECT_BASE_URL='https://tap.example.com/')
+    @patch('applications.aadhaar_client.AadhaarClient.digilocker_create_url')
+    def test_digilocker_start_uses_redirect_base_url(self, mock_create_url):
+        """Test DIGILOCKER_REDIRECT_BASE_URL overrides the request host for the callback URL."""
+        mock_create_url.return_value = {"status": "PENDING", "url": "https://digilocker.example/consent/abc"}
+        response = self.client.post(
+            self._start_url(), data=json.dumps(self.ALL_CONSENTS), content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 200)
+        callback_url = mock_create_url.call_args[0][1]
+        self.assertEqual(
+            callback_url,
+            f"https://tap.example.com/portal/{self.student.tracking_id}/aadhaar/digilocker/callback/"
+        )
+
+    def test_digilocker_start_requires_all_consents(self):
+        """Test POST /aadhaar/digilocker/start/ rejects missing consents."""
+        response = self.client.post(
+            self._start_url(),
+            data=json.dumps({"consent_aadhaar_ovd": False}),
             content_type='application/json'
         )
-        self.assertEqual(response1.status_code, 400)
-        self.assertIn("consents", response1.json()["error"])
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("consents", response.json()["error"])
 
-        # Test 2: Invalid Aadhaar length
-        response2 = self.client.post(
-            reverse('portal:aadhaar_send_otp', kwargs={'tracking_id': self.student.tracking_id}),
-            data=json.dumps({
-                "aadhaar_number": "12345",
-                "consent_aadhaar_ovd": True,
-                "consent_ckycr": True,
-                "consent_address_mismatch": True,
-                "consent_kyc_ppi": True,
-                "consent_terms_conditions": True
-            }),
-            content_type='application/json'
+    @patch('applications.aadhaar_client.AadhaarClient.digilocker_create_url')
+    def test_digilocker_start_cashfree_failure(self, mock_create_url):
+        """Test POST /aadhaar/digilocker/start/ surfaces a Cashfree error without saving a verification_id."""
+        mock_create_url.return_value = {"message": "Insufficient balance"}
+
+        response = self.client.post(
+            self._start_url(), data=json.dumps(self.ALL_CONSENTS), content_type='application/json'
         )
-        self.assertEqual(response2.status_code, 400)
-        self.assertIn("exactly 12 digits", response2.json()["error"])
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["success"])
+        self.assertEqual(response.json()["error"], "Insufficient balance")
+        self.student.refresh_from_db()
+        self.assertIsNone(self.student.aadhaar_ref_id)
 
-    @patch('applications.aadhaar_client.AadhaarClient.aadhaar_verify_otp')
+    @patch('applications.aadhaar_client.AadhaarClient.digilocker_create_url')
+    def test_digilocker_start_rate_limited(self, mock_create_url):
+        """Test a second start within the cooldown returns HTTP 429."""
+        mock_create_url.return_value = {"status": "PENDING", "url": "https://digilocker.example/consent/abc"}
+        first = self.client.post(self._start_url(), data=json.dumps(self.ALL_CONSENTS), content_type='application/json')
+        self.assertEqual(first.status_code, 200)
+        second = self.client.post(self._start_url(), data=json.dumps(self.ALL_CONSENTS), content_type='application/json')
+        self.assertEqual(second.status_code, 429)
+        self.assertEqual(mock_create_url.call_count, 1)
+
+    @patch('applications.aadhaar_client.AadhaarClient.digilocker_get_document')
+    @patch('applications.aadhaar_client.AadhaarClient.digilocker_get_status')
     @patch('applications.aadhaar_client.AadhaarClient.name_match')
     @patch('m2p.client.M2PClient.generate_otp')
-    def test_portal_verify_otp_success(self, mock_generate, mock_name_match, mock_verify_otp):
-        """Test POST /aadhaar/verify-otp/ success redirects to M2P OTP verify page."""
-        self.student.aadhaar_number = "123456789012"
-        self.student.aadhaar_ref_id = "REF-MOCK-A1"
+    def test_digilocker_callback_success(self, mock_generate, mock_name_match, mock_status, mock_document):
+        """Test the callback verifies status, fetches the document, name-matches and redirects to the M2P OTP page."""
+        self.student.aadhaar_ref_id = "TAP-VID-1"
+        self.student.otp_attempt_count = 1
         self.student.save()
 
-        mock_verify_otp.return_value = {"status": "SUCCESS", "data": {"name": "Vikesh Sharma Portal"}}
-        mock_name_match.return_value = {"status": "SUCCESS", "data": {"score": 0.95}} # 95%
+        mock_status.return_value = {"status": "AUTHENTICATED"}
+        mock_document.return_value = {"name": "Vikesh Sharma Portal", "aadhaar_number": "XXXXXXXX9012"}
+        mock_name_match.return_value = {"status": "SUCCESS", "data": {"score": 0.95}}
         mock_generate.return_value = {"success": True}
 
-        response = self.client.post(
-            reverse('portal:aadhaar_verify_otp', kwargs={'tracking_id': self.student.tracking_id}),
-            data=json.dumps({"otp": "123456", "ref_id": "REF-MOCK-A1"}),
-            content_type='application/json'
+        response = self.client.get(self._callback_url())
+        self.assertRedirects(
+            response, reverse('portal:otp_verify', kwargs={'tracking_id': self.student.tracking_id}),
+            fetch_redirect_response=False
         )
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertTrue(data["success"])
-        self.assertIn("/otp/", data["redirect_url"])
 
-        # Verify student record transitioned
         self.student.refresh_from_db()
-        self.assertEqual(self.student.otp_attempt_count, 0)
         self.assertTrue(self.student.aadhaar_verified)
+        self.assertEqual(self.student.aadhaar_number, "9012")
         self.assertEqual(self.student.aadhaar_name_match_score, 95)
+        self.assertEqual(self.student.otp_attempt_count, 0)
+        mock_status.assert_called_once()
         mock_generate.assert_called_once()
 
-    @patch('applications.aadhaar_client.AadhaarClient.aadhaar_verify_otp')
-    @patch('applications.aadhaar_client.AadhaarClient.name_match')
-    def test_portal_verify_otp_name_mismatch(self, mock_name_match, mock_verify_otp):
-        """Test POST /aadhaar/verify-otp/ returns error when name match score is < 90%."""
-        self.student.aadhaar_number = "123456789012"
-        self.student.aadhaar_ref_id = "REF-MOCK-A1"
+    @patch('applications.aadhaar_client.AadhaarClient.digilocker_get_document')
+    @patch('applications.aadhaar_client.AadhaarClient.digilocker_get_status')
+    @patch('m2p.client.M2PClient.generate_otp')
+    def test_digilocker_callback_is_idempotent(self, mock_generate, mock_status, mock_document):
+        """Test a repeated callback after verification does not call Cashfree or M2P again."""
+        self.student.aadhaar_ref_id = "TAP-VID-1"
+        self.student.aadhaar_verified = True
         self.student.save()
 
-        mock_verify_otp.return_value = {"status": "SUCCESS", "data": {"name": "Some Other Name"}}
-        mock_name_match.return_value = {"status": "SUCCESS", "data": {"score": 0.45}} # 45%
+        response = self.client.get(self._callback_url())
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/otp/", response.url)
+        mock_status.assert_not_called()
+        mock_document.assert_not_called()
+        mock_generate.assert_not_called()
 
-        response = self.client.post(
-            reverse('portal:aadhaar_verify_otp', kwargs={'tracking_id': self.student.tracking_id}),
-            data=json.dumps({"otp": "123456", "ref_id": "REF-MOCK-A1"}),
-            content_type='application/json'
-        )
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertFalse(data["success"])
-        self.assertIn("Aadhaar name mismatch", data["error"])
+    @patch('applications.aadhaar_client.AadhaarClient.digilocker_get_status')
+    def test_digilocker_callback_pending(self, mock_status):
+        """Test PENDING status returns to landing with a message and keeps the verification_id."""
+        self.student.aadhaar_ref_id = "TAP-VID-1"
+        self.student.save()
+        mock_status.return_value = {"status": "PENDING"}
+
+        response = self.client.get(self._callback_url())
+        self.assertRedirects(response, self._landing_url() + "?dl=pending", fetch_redirect_response=False)
+        self.student.refresh_from_db()
+        self.assertEqual(self.student.aadhaar_ref_id, "TAP-VID-1")
+        self.assertFalse(self.student.aadhaar_verified)
+
+    @patch('applications.aadhaar_client.AadhaarClient.digilocker_get_status')
+    def test_digilocker_callback_expired_and_denied(self, mock_status):
+        """Test EXPIRED / CONSENT_DENIED clear the verification_id so the student can restart."""
+        for dl_status, key in (("EXPIRED", "expired"), ("CONSENT_DENIED", "denied")):
+            self.student.aadhaar_ref_id = "TAP-VID-1"
+            self.student.save()
+            mock_status.return_value = {"status": dl_status}
+
+            response = self.client.get(self._callback_url())
+            self.assertRedirects(response, self._landing_url() + f"?dl={key}", fetch_redirect_response=False)
+            self.student.refresh_from_db()
+            self.assertIsNone(self.student.aadhaar_ref_id)
+
+        landing = self.client.get(self._landing_url() + "?dl=denied")
+        self.assertContains(landing, "declined consent")
+
+    def test_digilocker_callback_without_start(self):
+        """Test a callback with no verification in progress returns to landing with an error message."""
+        response = self.client.get(self._callback_url())
+        self.assertRedirects(response, self._landing_url() + "?dl=error", fetch_redirect_response=False)
+
+    @patch('applications.aadhaar_client.AadhaarClient.digilocker_get_document')
+    @patch('applications.aadhaar_client.AadhaarClient.digilocker_get_status')
+    @patch('applications.aadhaar_client.AadhaarClient.name_match')
+    def test_digilocker_callback_name_mismatch(self, mock_name_match, mock_status, mock_document):
+        """Test a name match below 90% is rejected, counts as an attempt and clears the verification_id."""
+        self.student.aadhaar_ref_id = "TAP-VID-1"
+        self.student.save()
+        mock_status.return_value = {"status": "AUTHENTICATED"}
+        mock_document.return_value = {"name": "Some Other Name", "aadhaar_number": "XXXXXXXX9012"}
+        mock_name_match.return_value = {"status": "SUCCESS", "data": {"score": 0.45}}
+
+        response = self.client.get(self._callback_url())
+        self.assertRedirects(response, self._landing_url() + "?dl=mismatch", fetch_redirect_response=False)
 
         self.student.refresh_from_db()
         self.assertFalse(self.student.aadhaar_verified)
         self.assertEqual(self.student.aadhaar_name_match_score, 45)
+        self.assertEqual(self.student.otp_attempt_count, 1)
+        self.assertIsNone(self.student.aadhaar_ref_id)
 
-    @patch('applications.aadhaar_client.AadhaarClient.aadhaar_verify_otp')
-    def test_portal_verify_otp_attempts_lockout(self, mock_verify_otp):
-        """Test POST /aadhaar/verify-otp/ fails limit locks student on 3rd attempt."""
-        self.student.aadhaar_number = "123456789012"
-        self.student.aadhaar_ref_id = "REF-MOCK-A1"
+    @patch('applications.aadhaar_client.AadhaarClient.digilocker_get_document')
+    @patch('applications.aadhaar_client.AadhaarClient.digilocker_get_status')
+    @patch('applications.aadhaar_client.AadhaarClient.name_match')
+    def test_digilocker_callback_name_mismatch_locks_on_third_attempt(self, mock_name_match, mock_status, mock_document):
+        """Test the third failed name match locks the student."""
+        self.student.aadhaar_ref_id = "TAP-VID-1"
+        self.student.otp_attempt_count = 2
         self.student.save()
+        mock_status.return_value = {"status": "AUTHENTICATED"}
+        mock_document.return_value = {"name": "Some Other Name", "aadhaar_number": "XXXXXXXX9012"}
+        mock_name_match.return_value = {"status": "SUCCESS", "data": {"score": 0.45}}
 
-        mock_verify_otp.return_value = {"status": "FAILED", "message": "Incorrect OTP"}
-
-        # Attempt 1
-        response1 = self.client.post(
-            reverse('portal:aadhaar_verify_otp', kwargs={'tracking_id': self.student.tracking_id}),
-            data=json.dumps({"otp": "111111", "ref_id": "REF-MOCK-A1"}),
-            content_type='application/json'
+        response = self.client.get(self._callback_url())
+        self.assertRedirects(
+            response, reverse('portal:locked', kwargs={'tracking_id': self.student.tracking_id}),
+            fetch_redirect_response=False
         )
-        self.assertEqual(response1.status_code, 200)
-        self.assertFalse(response1.json()["success"])
-        self.assertFalse(response1.json()["locked"])
-
-        # Attempt 2
-        response2 = self.client.post(
-            reverse('portal:aadhaar_verify_otp', kwargs={'tracking_id': self.student.tracking_id}),
-            data=json.dumps({"otp": "222222", "ref_id": "REF-MOCK-A1"}),
-            content_type='application/json'
-        )
-        self.assertEqual(response2.status_code, 200)
-        self.assertFalse(response2.json()["success"])
-        self.assertFalse(response2.json()["locked"])
-
-        # Attempt 3 (locks student)
-        response3 = self.client.post(
-            reverse('portal:aadhaar_verify_otp', kwargs={'tracking_id': self.student.tracking_id}),
-            data=json.dumps({"otp": "333333", "ref_id": "REF-MOCK-A1"}),
-            content_type='application/json'
-        )
-        self.assertEqual(response3.status_code, 403)
-        self.assertTrue(response3.json()["locked"])
-
         self.student.refresh_from_db()
         self.assertTrue(self.student.otp_locked)
+
+    @patch('applications.aadhaar_client.AadhaarClient.digilocker_get_status')
+    def test_digilocker_callback_cashfree_error(self, mock_status):
+        """Test a Cashfree exception returns to landing with an error message instead of a 500."""
+        self.student.aadhaar_ref_id = "TAP-VID-1"
+        self.student.save()
+        mock_status.side_effect = Exception("network down")
+
+        response = self.client.get(self._callback_url())
+        self.assertRedirects(response, self._landing_url() + "?dl=error", fetch_redirect_response=False)
 
     def test_success_get_without_min_kyc(self):
         """Test GET /success redirects to landing if kyc_status is not MIN_KYC."""
@@ -291,36 +365,93 @@ class PortalTestCase(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertRedirects(response, reverse('portal:success', kwargs={'tracking_id': self.student.tracking_id}))
 
-    @override_settings(MOCK_CASHFREE_APIS=False)
+    @override_settings(MOCK_CASHFREE_APIS=False, DIGILOCKER_USER_FLOW='signup')
     @patch('requests.post')
-    def test_aadhaar_client_logs_last_4_digits_only(self, mock_post):
-        """Test AadhaarClient logging stores only the last 4 digits of Aadhaar in logs."""
+    def test_digilocker_create_url_request_and_log(self, mock_post):
+        """Test create-URL sends the Cashfree DigiLocker payload and writes one log row."""
         from applications.aadhaar_client import AadhaarClient
 
         mock_resp = MagicMock()
         mock_resp.status_code = 200
-        mock_resp.json.return_value = {
-            "status": "SUCCESS",
-            "ref_id": "REAL-AADHAAR-REF-12345"
-        }
+        mock_resp.json.return_value = {"verification_id": "TAP-VID-1", "status": "PENDING", "url": "https://digilocker.example/x"}
         mock_post.return_value = mock_resp
 
-        client = AadhaarClient()
-        response = client.aadhaar_send_otp("123456789012", self.student)
-        self.assertEqual(response.get("ref_id"), "REAL-AADHAAR-REF-12345")
+        response = AadhaarClient().digilocker_create_url("TAP-VID-1", "https://portal.example/cb/", self.student)
+        self.assertEqual(response["url"], "https://digilocker.example/x")
 
-        # Verify the actual outbound HTTP request payload to Cashfree contained the full 12 digits
-        self.assertEqual(mock_post.call_args[1]['json']['aadhaar_number'], "123456789012")
+        self.assertEqual(mock_post.call_args[0][0], "https://sandbox.cashfree.com/verification/digilocker")
+        sent = mock_post.call_args[1]['json']
+        self.assertEqual(sent["verification_id"], "TAP-VID-1")
+        self.assertEqual(sent["document_requested"], ["AADHAAR"])
+        self.assertEqual(sent["redirect_url"], "https://portal.example/cb/")
+        self.assertEqual(sent["user_flow"], "signup")
 
-        log = AadhaarApiLog.objects.first()
-        self.assertIsNotNone(log)
+        log = AadhaarApiLog.objects.get()
         self.assertEqual(log.student, self.student)
-        self.assertEqual(log.endpoint, "aadhaar_send_otp")
+        self.assertEqual(log.endpoint, "digilocker_create_url")
         self.assertEqual(log.http_status, 200)
         self.assertTrue(log.success)
+        self.assertEqual(log.request_headers["X-Client-Secret"], "******")
 
-        # Assert only the last 4 digits of Aadhaar are stored in the logged payload
-        self.assertEqual(log.request_payload.get("aadhaar_number"), "9012")
+    @override_settings(MOCK_CASHFREE_APIS=False)
+    @patch('requests.get')
+    def test_digilocker_get_document_logs_masked_aadhaar_only(self, mock_get):
+        """Test get-document queries by verification_id and logs never hold more than the last 4 Aadhaar digits."""
+        from applications.aadhaar_client import AadhaarClient
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"name": "Vikesh Sharma Portal", "aadhaar_number": "XXXXXXXX9012"}
+        mock_get.return_value = mock_resp
+
+        response = AadhaarClient().digilocker_get_document("TAP-VID-1", self.student)
+        self.assertEqual(response["name"], "Vikesh Sharma Portal")
+        self.assertEqual(mock_get.call_args[0][0], "https://sandbox.cashfree.com/verification/digilocker/document/AADHAAR")
+        self.assertEqual(mock_get.call_args[1]['params'], {"verification_id": "TAP-VID-1"})
+
+        log = AadhaarApiLog.objects.get()
+        self.assertEqual(log.endpoint, "digilocker_document")
+        self.assertTrue(log.success)
+        self.assertEqual(log.response_payload["aadhaar_number"], "9012")
+
+    @override_settings(MOCK_CASHFREE_APIS=False)
+    @patch('requests.get')
+    def test_digilocker_get_status_failure_is_logged(self, mock_get):
+        """Test a non-200 Cashfree response is logged as a failure with its message."""
+        from applications.aadhaar_client import AadhaarClient
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 401
+        mock_resp.json.return_value = {"message": "Invalid clientId and clientSecret combination"}
+        mock_get.return_value = mock_resp
+
+        AadhaarClient().digilocker_get_status("TAP-VID-1", self.student)
+        log = AadhaarApiLog.objects.get()
+        self.assertEqual(log.endpoint, "digilocker_status")
+        self.assertFalse(log.success)
+        self.assertEqual(log.error_message, "Invalid clientId and clientSecret combination")
+
+    @override_settings(MOCK_CASHFREE_APIS=True)
+    def test_digilocker_mock_mode_end_to_end(self):
+        """Test mock mode walks start -> callback with no external calls and lands on the M2P OTP page."""
+        with patch('m2p.client.M2PClient.generate_otp', return_value={"success": True}):
+            start = self.client.post(self._start_url(), data=json.dumps(self.ALL_CONSENTS), content_type='application/json')
+            self.assertTrue(start.json()["success"])
+            self.assertIn("/aadhaar/digilocker/callback/", start.json()["url"])
+
+            callback = self.client.get(self._callback_url())
+            self.assertRedirects(
+                callback, reverse('portal:otp_verify', kwargs={'tracking_id': self.student.tracking_id}),
+                fetch_redirect_response=False
+            )
+
+        self.student.refresh_from_db()
+        self.assertTrue(self.student.aadhaar_verified)
+        self.assertEqual(self.student.aadhaar_number, "9012")
+        self.assertEqual(
+            sorted(AadhaarApiLog.objects.values_list('endpoint', flat=True)),
+            ["digilocker_create_url", "digilocker_document", "digilocker_status", "name_match"]
+        )
 
     def test_m2p_otp_page_get_secure(self):
         """Test GET /portal/<tracking_id>/otp/ redirects to landing if Aadhaar not verified."""
@@ -350,7 +481,8 @@ class PortalTestCase(TestCase):
     def test_m2p_otp_submission_success(self, mock_twa_sync, mock_m2p_register):
         """Test POST /portal/<tracking_id>/otp/ registers student successfully."""
         self.student.aadhaar_verified = True
-        self.student.aadhaar_number = "123456789012"
+        self.student.aadhaar_number = "9012"
+        self.student.aadhaar_ref_id = "TAP-VID-1"
         self.student.save()
 
         mock_m2p_register.return_value = {
@@ -386,52 +518,14 @@ class PortalTestCase(TestCase):
         self.assertRedirects(response, reverse('portal:success', kwargs={'tracking_id': self.student.tracking_id}))
 
         self.student.refresh_from_db()
-        # Assert full 12 digits were passed to M2P
-        self.assertEqual(mock_m2p_register.call_args[0][2], "123456789012")
+        # Assert the DigiLocker verification reference was passed to M2P as the document ref
+        self.assertEqual(mock_m2p_register.call_args[0][2], "TAP-VID-1")
         self.assertEqual(self.student.kyc_status, "MIN_KYC")
         self.assertEqual(self.student.m2p_kit_no, "KIT-TEST-999")
         self.assertEqual(self.student.m2p_token, "TOKEN-TEST-999")
         # Assert only last 4 digits are stored in the database
         self.assertEqual(self.student.aadhaar_number, "9012")
         self.assertTrue(self.student.twa_synced)
-
-    @patch('m2p.client.M2PClient.register_min_kyc')
-    @patch('twa.client.TWAClient.sync_onboard')
-    def test_m2p_otp_submission_uses_session_full_aadhaar(self, mock_twa_sync, mock_m2p_register):
-        """Test that full 12-digit Aadhaar from session is passed to M2P while DB retains only last 4 digits."""
-        self.student.aadhaar_verified = True
-        self.student.aadhaar_number = "9012"
-        self.student.save()
-
-        mock_m2p_register.return_value = {
-            "success": True,
-            "result": {
-                "entityId": "APAAR-E2E-99999",
-                "cardDetails": {"kitNumber": "KIT-TEST-999"},
-                "token": "TOKEN-TEST-999"
-            }
-        }
-
-        # Prime the session with the full 12 digits as stored during AadhaarSendOTPView
-        session = self.client.session
-        session[f"aadhaar_full_{self.student.tracking_id}"] = "123456789012"
-        session.save()
-
-        response = self.client.post(
-            reverse('portal:otp_verify', kwargs={'tracking_id': self.student.tracking_id}),
-            data={"otp": "123456"}
-        )
-        self.assertEqual(response.status_code, 302)
-
-        # Assert full 12 digits were passed to M2P registration
-        self.assertEqual(mock_m2p_register.call_args[0][2], "123456789012")
-
-        # Assert DB strictly retains only the last 4 digits
-        self.student.refresh_from_db()
-        self.assertEqual(self.student.aadhaar_number, "9012")
-
-        # Assert session key was cleaned up
-        self.assertNotIn(f"aadhaar_full_{self.student.tracking_id}", self.client.session)
 
     @patch('m2p.client.M2PClient.register_min_kyc')
     def test_m2p_otp_submission_fail_limit(self, mock_m2p_register):
@@ -637,54 +731,20 @@ class PortalTestCase(TestCase):
         )
         self.assertRedirects(res_otp_post, reverse('portal:success', kwargs={'tracking_id': self.student.tracking_id}))
 
-        # 4. Aadhaar Send OTP POST -> rejected with 400 and redirect_url
-        res_aadhaar_send = self.client.post(
-            reverse('portal:aadhaar_send_otp', kwargs={'tracking_id': self.student.tracking_id}),
-            data=json.dumps({"aadhaar_number": "123456789012"}),
+        # 4. DigiLocker start POST -> rejected with 400 and redirect_url
+        res_dl_start = self.client.post(
+            reverse('portal:digilocker_start', kwargs={'tracking_id': self.student.tracking_id}),
+            data=json.dumps(self.ALL_CONSENTS),
             content_type='application/json'
         )
-        self.assertEqual(res_aadhaar_send.status_code, 400)
-        self.assertIn(reverse('portal:success', kwargs={'tracking_id': self.student.tracking_id}), res_aadhaar_send.json().get('redirect_url', ''))
+        self.assertEqual(res_dl_start.status_code, 400)
+        self.assertIn(reverse('portal:success', kwargs={'tracking_id': self.student.tracking_id}), res_dl_start.json().get('redirect_url', ''))
 
-        # 5. Aadhaar Verify OTP POST -> rejected with 400 and redirect_url
-        res_aadhaar_verify = self.client.post(
-            reverse('portal:aadhaar_verify_otp', kwargs={'tracking_id': self.student.tracking_id}),
-            data=json.dumps({"otp": "123456", "ref_id": "REF-1"}),
-            content_type='application/json'
+        # 5. DigiLocker callback GET -> redirects to success
+        res_dl_callback = self.client.get(
+            reverse('portal:digilocker_callback', kwargs={'tracking_id': self.student.tracking_id})
         )
-        self.assertEqual(res_aadhaar_verify.status_code, 400)
-        self.assertIn(reverse('portal:success', kwargs={'tracking_id': self.student.tracking_id}), res_aadhaar_verify.json().get('redirect_url', ''))
-
-    @patch('applications.aadhaar_client.AadhaarClient.aadhaar_send_otp')
-    def test_rate_limiting_aadhaar_send_otp(self, mock_send_otp):
-        """Test that calling Aadhaar Send OTP within 30 seconds triggers HTTP 429 rate limit."""
-        mock_send_otp.return_value = {"status": "SUCCESS", "ref_id": "REF-RL-1"}
-
-        payload = {
-            "aadhaar_number": "123456789012",
-            "consent_aadhaar_ovd": True,
-            "consent_ckycr": True,
-            "consent_address_mismatch": True,
-            "consent_kyc_ppi": True,
-            "consent_terms_conditions": True
-        }
-
-        # First request succeeds
-        res1 = self.client.post(
-            reverse('portal:aadhaar_send_otp', kwargs={'tracking_id': self.student.tracking_id}),
-            data=json.dumps(payload),
-            content_type='application/json'
-        )
-        self.assertEqual(res1.status_code, 200)
-
-        # Immediate second request fails with 429
-        res2 = self.client.post(
-            reverse('portal:aadhaar_send_otp', kwargs={'tracking_id': self.student.tracking_id}),
-            data=json.dumps(payload),
-            content_type='application/json'
-        )
-        self.assertEqual(res2.status_code, 429)
-        self.assertIn("Please wait", res2.json()["error"])
+        self.assertRedirects(res_dl_callback, reverse('portal:success', kwargs={'tracking_id': self.student.tracking_id}))
 
     @patch('m2p.client.M2PClient.generate_otp')
     def test_rate_limiting_m2p_resend_otp(self, mock_generate_otp):
@@ -733,49 +793,3 @@ class PortalTestCase(TestCase):
         # Verify DB content was NOT overwritten back to default_content
         page = CMSPage.objects.get(slug='success-page')
         self.assertEqual(page.content, custom_text)
-
-    @patch('applications.aadhaar_client.AadhaarClient.aadhaar_verify_otp')
-    def test_attempt_rollback_on_server_error(self, mock_verify):
-        """Test that attempt count is rolled back if upstream service crashes with 500."""
-        self.student.aadhaar_number = "123456789012"
-        self.student.aadhaar_ref_id = "REF-ERR-1"
-        self.student.otp_attempt_count = 1
-        self.student.save()
-
-        mock_verify.side_effect = Exception("Cashfree network timeout")
-
-        response = self.client.post(
-            reverse('portal:aadhaar_verify_otp', kwargs={'tracking_id': self.student.tracking_id}),
-            data=json.dumps({"otp": "123456", "ref_id": "REF-ERR-1"}),
-            content_type='application/json'
-        )
-        self.assertEqual(response.status_code, 500)
-
-        self.student.refresh_from_db()
-        # Attempt count should remain 1 instead of being incremented to 2
-        self.assertEqual(self.student.otp_attempt_count, 1)
-
-    @patch('applications.aadhaar_client.AadhaarClient.aadhaar_verify_otp')
-    @patch('applications.aadhaar_client.AadhaarClient.name_match')
-    def test_name_mismatch_locks_on_third_attempt(self, mock_name_match, mock_verify):
-        """Test that name mismatch locks out student if it occurs on attempt 3."""
-        self.student.aadhaar_number = "123456789012"
-        self.student.aadhaar_ref_id = "REF-MM-1"
-        self.student.otp_attempt_count = 2 # Will become 3
-        self.student.save()
-
-        mock_verify.return_value = {"status": "SUCCESS", "data": {"name": "Completely Different"}}
-        mock_name_match.return_value = {"status": "SUCCESS", "data": {"score": 0.20}}
-
-        response = self.client.post(
-            reverse('portal:aadhaar_verify_otp', kwargs={'tracking_id': self.student.tracking_id}),
-            data=json.dumps({"otp": "123456", "ref_id": "REF-MM-1"}),
-            content_type='application/json'
-        )
-        self.assertEqual(response.status_code, 403)
-        self.assertTrue(response.json()["locked"])
-
-        self.student.refresh_from_db()
-        self.assertTrue(self.student.otp_locked)
-        self.assertIsNotNone(self.student.otp_locked_until)
-
