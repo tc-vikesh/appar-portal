@@ -226,8 +226,8 @@ class DigiLockerCallbackView(View):
                     return redirect(reverse('portal:locked', kwargs={'tracking_id': tracking_id}))
                 return _landing_redirect(tracking_id, 'mismatch')
 
-            masked_aadhaar = re.sub(r'\D', '', str(doc.get("aadhaar_number") or ""))
-            student.aadhaar_number = masked_aadhaar[-4:] or None
+            masked_aadhaar = re.sub(r'\D', '', str(doc.get("uid") or ""))
+            student.aadhaar_number = masked_aadhaar or None
             student.aadhaar_verified = True
             student.save()
 
